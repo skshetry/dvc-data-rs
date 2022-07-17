@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Commands::Build { path, write, jobs } => {
             let threads = create_pool(jobs);
             // println!("{:?}", checksum(&path));
-            let odb = get_odb()?;
+            let (odb, _) = get_odb()?;
             eprintln!("    {} files", style("Staging").green().bold());
             let obj = build(&odb, &path, threads);
             let oid = if write {
@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(())
         }
         Commands::Add { path } => {
-            let odb = get_odb()?;
+            let (odb, _) = get_odb()?;
             let threads = create_pool(None);
             eprintln!("    {} files", style("Staging").green().bold());
             let obj = build(&odb, &path, threads);
@@ -78,12 +78,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(())
         }
         Commands::CheckoutObject { oid, path } => {
-            let odb = get_odb()?;
+            let (odb, _) = get_odb()?;
             checkout_obj(&odb, &oid, &path);
             Ok(())
         }
         Commands::Checkout { path } => {
-            let odb = get_odb()?;
+            let (odb, _) = get_odb()?;
             checkout(&odb, &path);
             Ok(())
         }
