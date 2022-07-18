@@ -1,7 +1,11 @@
 use clap::{Parser, Subcommand};
 use console::style;
-use dvc_data::{build, checkout, checkout_obj, create_pool, get_odb, transfer, DvcFile, Object};
+use dvc_data::ignore::get_ignore;
+use dvc_data::ignorelist;
+use dvc_data::repo::Repo;
+use dvc_data::{build, checkout, checkout_obj, create_pool, transfer, DvcFile, Object};
 use std::error::Error;
+use std::fs;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -21,10 +25,14 @@ enum Commands {
         write: bool,
         #[clap(short, long)]
         jobs: Option<usize>,
+        #[clap(long, takes_value = false)]
+        no_state: bool,
     },
     Add {
         #[clap(required = true, value_parser)]
         path: PathBuf,
+        #[clap(long, takes_value = false)]
+        no_state: bool,
     },
     CheckoutObject {
         #[clap(required = true)]
@@ -42,15 +50,24 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::parse();
 
     return match args.command {
-        Commands::Build { path, write, jobs } => {
+        Commands::Build {
+            path,
+            write,
+            jobs,
+            no_state,
+        } => {
             let threads = create_pool(jobs);
-            // println!("{:?}", checksum(&path));
-            let (odb, _) = get_odb()?;
+            let repo = Repo::discover(None)?;
+            let state = if no_state { None } else { Some(&repo.state) };
             eprintln!("    {} files", style("Staging").green().bold());
-            let obj = build(&odb, &path, threads);
+
+            let abspath = fs::canonicalize(path.clone())?;
+            let ignore = get_ignore(&repo.root, abspath.parent().unwrap());
+            let obj = build(&repo.odb, &path, state, &ignore, threads);
+
             let oid = if write {
                 eprintln!("    {} files", style("Transferring").green().bold());
-                transfer(&odb, &path, &obj)
+                transfer(&repo.odb, &path, &obj)
             } else {
                 match obj {
                     Object::Tree(t) => t.digest().1,
@@ -60,13 +77,18 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!("object {}", oid);
             Ok(())
         }
-        Commands::Add { path } => {
-            let (odb, _) = get_odb()?;
+        Commands::Add { path, no_state } => {
+            let repo = Repo::discover(None)?;
+            let state = if no_state { None } else { Some(&repo.state) };
             let threads = create_pool(None);
             eprintln!("    {} files", style("Staging").green().bold());
-            let obj = build(&odb, &path, threads);
+
+            let abspath = fs::canonicalize(path.clone())?;
+            let ignore = get_ignore(&repo.root, abspath.parent().unwrap());
+            let obj = build(&repo.odb, &path, state, &ignore, threads);
             eprintln!("    {} files", style("Transferring").green().bold());
-            let oid = transfer(&odb, &path, &obj);
+
+            let oid = transfer(&repo.odb, &path, &obj);
             let filename: String = path.file_name().unwrap().to_str().unwrap().into();
             let dvcfile = path.with_file_name(format!("{}.dvc", filename));
             eprintln!(
@@ -75,16 +97,24 @@ fn main() -> Result<(), Box<dyn Error>> {
                 dvcfile.to_str().unwrap()
             );
             DvcFile::create(&dvcfile, path.as_path(), oid);
+
+            let mut ignorelst = ignorelist::IgnoreList { ignore: Vec::new() };
+            ignorelst
+                .ignore
+                .push(format!("/{}", path.file_name().unwrap().to_str().unwrap()));
+            let gitignore = path.with_file_name(".gitignore");
+            ignorelst.write(&gitignore);
+
             Ok(())
         }
         Commands::CheckoutObject { oid, path } => {
-            let (odb, _) = get_odb()?;
-            checkout_obj(&odb, &oid, &path);
+            let repo = Repo::discover(None)?;
+            checkout_obj(&repo.odb, &oid, &path);
             Ok(())
         }
         Commands::Checkout { path } => {
-            let (odb, _) = get_odb()?;
-            checkout(&odb, &path);
+            let repo = Repo::discover(None)?;
+            checkout(&repo.odb, &path);
             Ok(())
         }
     };

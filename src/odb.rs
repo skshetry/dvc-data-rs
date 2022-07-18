@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
+#[derive(Debug)]
 pub struct Odb {
-    #[allow(dead_code)]
     pub path: PathBuf,
 }
 

@@ -10,7 +10,6 @@ pub fn checksum_from_metadata(meta: &fs::Metadata) -> String {
     u128::from_str_radix(&hash, 16).unwrap().to_string()
 }
 
-#[allow(dead_code)]
 pub fn checksum(path: &PathBuf) -> String {
     // TODO: will be used to read from DVC's state db
     let meta = fs::metadata(path).unwrap();

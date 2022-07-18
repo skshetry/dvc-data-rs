@@ -1,8 +1,8 @@
 use rusqlite::{named_params, types::Null, Connection, Result};
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::fs;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct StateHash {
@@ -23,6 +23,7 @@ pub fn as_fractional_seconds(dur: Duration) -> f64 {
     dur.as_secs() as f64 + dur.subsec_nanos() as f64 / 1_000_000_000.0
 }
 
+#[derive(Debug)]
 pub struct State {
     conn: Connection,
 }
