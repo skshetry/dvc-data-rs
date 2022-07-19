@@ -132,19 +132,20 @@ pub fn build(
     ignore: &Gitignore,
     jobs: usize,
 ) -> Object {
+    let root = fs::canonicalize(root).unwrap();
     assert!(
         !ignore
-            .matched_path_or_any_parents(fs::canonicalize(root).unwrap(), root.is_dir())
+            .matched_path_or_any_parents(&root, root.is_dir())
             .is_ignore(),
         "The path {} is dvcignored",
-        root.display()
+        root.display(),
     );
 
     if root.is_file() {
-        return _build_file(&root.to_path_buf(), state);
+        return _build_file(&root, state);
     }
 
-    let files: Vec<FileInfo> = WalkDir::new(root)
+    let files: Vec<FileInfo> = WalkDir::new(&root)
         .parallelism(Parallelism::RayonNewPool(jobs))
         .into_iter()
         .par_bridge()
@@ -156,13 +157,13 @@ pub fn build(
             let path = &dentry.path();
 
             if ignore
-                .matched_path_or_any_parents(fs::canonicalize(path).unwrap(), false)
+                .matched_path_or_any_parents(path, false)
                 .is_ignore()
             {
                 return None;
             }
             Some(FileInfo::from_metadata(
-                &dentry.path(),
+                path,
                 &dentry.metadata().unwrap(),
             ))
         })
@@ -179,12 +180,12 @@ pub fn build(
 
     let mut tree_entries: Vec<(PathBuf, String)> = Vec::new();
     for (file_info, oid) in cached_entries {
-        let relpath = file_info.path.strip_prefix(root).unwrap().to_path_buf();
+        let relpath = file_info.path.strip_prefix(&root).unwrap().to_path_buf();
         tree_entries.push((relpath, oid.to_owned()))
     }
 
     for (file_info, oid) in new_entries {
-        let relpath = file_info.path.strip_prefix(root).unwrap().to_path_buf();
+        let relpath = file_info.path.strip_prefix(&root).unwrap().to_path_buf();
         tree_entries.push((relpath, oid.to_owned()))
     }
 
