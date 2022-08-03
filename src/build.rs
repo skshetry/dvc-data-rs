@@ -35,30 +35,42 @@ impl FileInfo {
     }
 }
 
-fn get_hashes<'a>(
-    file_infos: impl Iterator<Item = &'a FileInfo>,
+fn get_hashes(
+    file_infos: Vec<FileInfo>,
     state: Option<&State>,
-) -> (Vec<&'a FileInfo>, Vec<(FileInfo, String)>) {
+) -> (Vec<FileInfo>, Vec<(FileInfo, String)>) {
     let mut new_files = Vec::new();
     let mut cached_entries = Vec::new();
+
+    let is_empty = match state {
+        None => true,
+        Some(s) => s.is_empty().unwrap_or(false),
+    };
+    if is_empty {
+        return (file_infos, cached_entries);
+    }
+
+    let s = state.unwrap();
+
+    let keys: Vec<String> = file_infos
+        .iter()
+        .map(|file_info| {
+            let file = &file_info.path;
+            file.to_str().unwrap().to_string()
+        })
+        .collect();
+    let mut m = s.get_many(keys.iter(), None).unwrap();
+
     for file_info in file_infos {
         let file = &file_info.path;
-        if let Some(s) = state {
-            let value = s.get((*file).to_str().unwrap().to_string()).unwrap();
-            match value {
-                None => new_files.push(file_info),
-                Some(st) => {
-                    if st.checksum != file_info.checksum {
-                        new_files.push(file_info)
-                    } else {
-                        let oid = st.hash_info.oid.to_owned();
-                        let file_info = FileInfo::from_state(&file_info.path, st);
-                        cached_entries.push((file_info, oid))
-                    }
-                }
+        let key = file.to_str().unwrap().to_string();
+        match m.remove(&key) {
+            Some(v) if v.checksum == file_info.checksum => {
+                let oid = v.hash_info.oid.to_owned();
+                let file_info = FileInfo::from_state(&file_info.path, v);
+                cached_entries.push((file_info, oid))
             }
-        } else {
-            new_files.push(file_info)
+            _ => new_files.push(file_info),
         }
     }
     (new_files, cached_entries)
@@ -156,24 +168,17 @@ pub fn build(
             }
             let path = &dentry.path();
 
-            if ignore
-                .matched_path_or_any_parents(path, false)
-                .is_ignore()
-            {
+            if ignore.matched_path_or_any_parents(path, false).is_ignore() {
                 return None;
             }
-            Some(FileInfo::from_metadata(
-                path,
-                &dentry.metadata().unwrap(),
-            ))
+            Some(FileInfo::from_metadata(path, &dentry.metadata().unwrap()))
         })
         .collect();
 
-    let (new_files, cached_entries) = get_hashes(files.iter(), state);
-
+    let (new_files, cached_entries) = get_hashes(files, state);
     let new_entries: Vec<(&FileInfo, String)> = new_files
         .par_iter()
-        .map(|file_info| (*file_info, file_md5(file_info.path.to_path_buf())))
+        .map(|file_info| (file_info, file_md5(file_info.path.to_path_buf())))
         .collect();
 
     set_hashes(new_entries.iter(), state);

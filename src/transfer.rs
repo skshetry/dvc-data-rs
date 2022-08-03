@@ -1,4 +1,4 @@
-use crate::fsutils::transfer_file;
+use crate::fsutils::{protect_file, transfer_file};
 use crate::objects::{Object, Tree};
 use crate::odb::{oid_to_path, Odb};
 use indicatif::{ParallelProgressIterator, ProgressBar};
@@ -12,6 +12,7 @@ pub fn transfer_obj(root: &Path, from: &PathBuf, oid: &str) {
         return;
     }
     transfer_file(from, &to);
+    protect_file(&to);
 }
 
 pub fn write_obj(root: &Path, oid: &str, contents: &String) {
@@ -20,7 +21,8 @@ pub fn write_obj(root: &Path, oid: &str, contents: &String) {
         return;
     }
     fs::create_dir_all(to.parent().unwrap()).unwrap();
-    fs::write(to, contents).unwrap();
+    fs::write(to.clone(), contents).unwrap();
+    protect_file(&to);
 }
 
 pub fn transfer_tree(odb: &Odb, wroot: &Path, tree: &Tree) -> String {
