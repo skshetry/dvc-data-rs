@@ -158,6 +158,7 @@ pub fn build(
     }
 
     let files: Vec<FileInfo> = WalkDir::new(&root)
+        .follow_links(true)
         .parallelism(Parallelism::RayonNewPool(jobs))
         .into_iter()
         .par_bridge()
