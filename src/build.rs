@@ -100,7 +100,7 @@ fn set_hashes<'a>(
 }
 
 fn _build_file(root: &PathBuf, state: Option<&State>) -> Object {
-    let file_info = FileInfo::from_metadata(root, &fs::metadata(&root).unwrap());
+    let file_info = FileInfo::from_metadata(root, &fs::metadata(root).unwrap());
     let state_value: Option<StateValue> = match state {
         None => None,
         Some(s) => {
