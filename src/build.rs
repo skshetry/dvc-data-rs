@@ -6,11 +6,12 @@ use crate::state::{State, StateHash, StateValue};
 use ignore;
 use ignore::gitignore::Gitignore;
 use jwalk::{Parallelism, WalkDir};
+use log::debug;
 use rayon::prelude::*;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-
+use std::time::Instant;
 struct FileInfo {
     checksum: String,
     path: PathBuf,
@@ -157,6 +158,7 @@ pub fn build(
         return _build_file(&root, state);
     }
 
+    let walk_start = Instant::now();
     let files: Vec<FileInfo> = WalkDir::new(&root)
         .follow_links(true)
         .parallelism(Parallelism::RayonNewPool(jobs))
@@ -175,15 +177,27 @@ pub fn build(
             Some(FileInfo::from_metadata(path, &dentry.metadata().unwrap()))
         })
         .collect();
+    debug!("time to walk {:?}", walk_start.elapsed());
 
+    let check_hashed_start = Instant::now();
     let (new_files, cached_entries) = get_hashes(files, state);
+    debug!(
+        "time to check if files are already hashed {:?}",
+        check_hashed_start.elapsed()
+    );
+
+    let hash_start = Instant::now();
     let new_entries: Vec<(&FileInfo, String)> = new_files
         .par_iter()
         .map(|file_info| (file_info, file_md5(file_info.path.to_path_buf())))
         .collect();
+    debug!("time to hash {:?}", hash_start.elapsed());
 
+    let save_hashes_start = Instant::now();
     set_hashes(new_entries.iter(), state);
+    debug!("time to save hashes {:?}", save_hashes_start.elapsed());
 
+    let build_tree_start = Instant::now();
     let mut tree_entries: Vec<(PathBuf, String)> = Vec::new();
     for (file_info, oid) in cached_entries {
         let relpath = file_info.path.strip_prefix(&root).unwrap().to_path_buf();
@@ -196,6 +210,8 @@ pub fn build(
     }
 
     tree_entries.sort_unstable(); // sort keys
+
+    debug!("time to build tree {:?}", build_tree_start.elapsed());
     Object::Tree(Tree {
         entries: tree_entries,
     })

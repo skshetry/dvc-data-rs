@@ -4,6 +4,7 @@ use dvc_data::ignore::get_ignore;
 use dvc_data::ignorelist;
 use dvc_data::repo::Repo;
 use dvc_data::{build, checkout, checkout_obj, create_pool, transfer, DvcFile, Object};
+use env_logger::Env;
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
@@ -14,6 +15,9 @@ use std::path::PathBuf;
 struct Cli {
     #[clap(subcommand)]
     command: Commands,
+
+    #[clap(short, long)]
+    verbose: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -48,6 +52,8 @@ enum Commands {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::parse();
+    let level = if args.verbose { "debug" } else { "warn" };
+    env_logger::Builder::from_env(Env::default().default_filter_or(level)).init();
 
     return match args.command {
         Commands::Build {
