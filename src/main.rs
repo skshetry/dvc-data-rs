@@ -10,42 +10,37 @@ use std::fs;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
-#[clap(name = "dvc-data")]
-#[clap(about = "dvc-data in rust", long_about = None)]
+#[command(name = "dvc-data")]
+#[command(about = "dvc-data in rust", long_about = None)]
 struct Cli {
-    #[clap(subcommand)]
+    #[command(subcommand)]
     command: Commands,
 
-    #[clap(short, long)]
+    #[arg(short, long)]
     verbose: bool,
 }
 
 #[derive(Subcommand, Debug)]
 enum Commands {
     Build {
-        #[clap(required = true, value_parser)]
         path: PathBuf,
-        #[clap(short, long)]
+        #[arg(short, long)]
         write: bool,
-        #[clap(short, long)]
+        #[arg(short, long)]
         jobs: Option<usize>,
-        #[clap(long, takes_value = false)]
+        #[arg(long)]
         no_state: bool,
     },
     Add {
-        #[clap(required = true, value_parser)]
         path: PathBuf,
-        #[clap(long, takes_value = false)]
+        #[arg(long)]
         no_state: bool,
     },
     CheckoutObject {
-        #[clap(required = true)]
         oid: String,
-        #[clap(required = true, value_parser)]
         path: PathBuf,
     },
     Checkout {
-        #[clap(required = true, value_parser)]
         path: PathBuf,
     },
 }

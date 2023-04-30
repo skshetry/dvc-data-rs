@@ -94,7 +94,7 @@ impl State {
         items: impl Iterator<Item = &'a String>,
         batch_size: Option<usize>,
     ) -> Result<HashMap<String, StateValue>> {
-        let batch_size = batch_size.unwrap_or(999);
+        let batch_size = batch_size.unwrap_or(7999);
         let mut res = HashMap::new();
 
         for chunk in &items.chunks(batch_size) {
@@ -149,14 +149,14 @@ impl State {
         let time = as_fractional_seconds(now);
         let transaction = self.conn.unchecked_transaction()?;
 
-        for chunk in &items.chunks(50) {
+        for chunk in &items.chunks(7999) {
             let chunk: Vec<_> = chunk.collect();
             let raw_query = prepare_insert(chunk.len());
             let mut statement = transaction.prepare_cached(raw_query.as_str())?;
 
             let mut params = Vec::new();
             let mut vector = Vec::new();
-            for (key, value) in chunk {
+            for (key, value) in &chunk {
                 let value = serde_json::to_string(&value).unwrap();
                 let value = value.replace(',', ", ").replace(':', ": ");
                 vector.push((key, time, value));

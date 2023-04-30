@@ -209,7 +209,7 @@ pub fn build(
         tree_entries.push((relpath, oid.to_owned()))
     }
 
-    tree_entries.sort_unstable(); // sort keys
+    tree_entries.par_sort_unstable(); // sort keys
 
     debug!("time to build tree {:?}", build_tree_start.elapsed());
     Object::Tree(Tree {
