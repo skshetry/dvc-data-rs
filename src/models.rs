@@ -6,6 +6,10 @@ use std::path::{Path, PathBuf};
 pub struct Output {
     #[serde(rename = "md5")]
     pub oid: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nfiles: Option<usize>,
     pub path: PathBuf,
 }
 
@@ -15,9 +19,17 @@ pub struct DvcFile {
 }
 
 impl DvcFile {
-    pub fn create(dvcfile: &PathBuf, path: &Path, oid: String) {
+    pub fn create(
+        dvcfile: &PathBuf,
+        path: &Path,
+        oid: String,
+        size: Option<u64>,
+        nfiles: Option<usize>,
+    ) {
         let output = Output {
             oid,
+            size,
+            nfiles,
             path: path.to_path_buf(),
         };
         let dvcfile_obj = DvcFile { outs: (output,) };

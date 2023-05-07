@@ -100,7 +100,7 @@ fn set_hashes<'a>(
     }
 }
 
-fn _build_file(root: &PathBuf, state: Option<&State>) -> Object {
+fn _build_file(root: &PathBuf, state: Option<&State>) -> (Object, u64) {
     let file_info = FileInfo::from_metadata(root, &fs::metadata(root).unwrap());
     let state_value: Option<StateValue> = match state {
         None => None,
@@ -135,7 +135,7 @@ fn _build_file(root: &PathBuf, state: Option<&State>) -> Object {
         }
         Some(st) => st.hash_info.oid,
     };
-    Object::HashFile(oid)
+    (Object::HashFile(oid), file_info.size)
 }
 
 pub fn build(
@@ -144,7 +144,7 @@ pub fn build(
     state: Option<&State>,
     ignore: &Gitignore,
     jobs: usize,
-) -> Object {
+) -> (Object, u64) {
     let root = fs::canonicalize(root).unwrap();
     assert!(
         !ignore
@@ -177,6 +177,8 @@ pub fn build(
             Some(FileInfo::from_metadata(path, &dentry.metadata().unwrap()))
         })
         .collect();
+
+    let size: u64 = files.par_iter().map(|fi| fi.size).sum();
     debug!("time to walk {:?}", walk_start.elapsed());
 
     let check_hashed_start = Instant::now();
@@ -212,7 +214,8 @@ pub fn build(
     tree_entries.par_sort_unstable(); // sort keys
 
     debug!("time to build tree {:?}", build_tree_start.elapsed());
-    Object::Tree(Tree {
+    let tree = Object::Tree(Tree {
         entries: tree_entries,
-    })
+    });
+    (tree, size)
 }

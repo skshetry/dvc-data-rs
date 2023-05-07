@@ -1,5 +1,6 @@
 pub mod build;
 pub mod checkout;
+pub mod config;
 pub mod fsutils;
 pub mod hash;
 pub mod ignore;

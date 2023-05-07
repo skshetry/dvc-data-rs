@@ -30,6 +30,6 @@ pub fn checkout_obj(odb: &Odb, oid: &str, to: &PathBuf) {
 pub fn checkout(odb: &Odb, dvcfile_path: &PathBuf) {
     let contents = &fs::read_to_string(dvcfile_path).unwrap();
     let dvcfile_obj: DvcFile = serde_yaml::from_str(contents).unwrap();
-    let Output { oid, path } = dvcfile_obj.outs.0;
+    let Output { oid, path, .. } = dvcfile_obj.outs.0;
     checkout_obj(odb, &oid, &path)
 }
