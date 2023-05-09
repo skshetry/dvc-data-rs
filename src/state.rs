@@ -22,8 +22,9 @@ pub struct StateValue {
     pub hash_info: StateHash,
 }
 
+#[allow(clippy::cast_precision_loss)]
 pub fn as_fractional_seconds(dur: Duration) -> f64 {
-    dur.as_secs() as f64 + dur.subsec_nanos() as f64 / 1_000_000_000.0
+    dur.as_secs() as f64 + f64::from(dur.subsec_nanos()) / 1_000_000_000.0
 }
 
 #[derive(Debug)]
@@ -34,7 +35,7 @@ pub struct State {
 impl State {
     pub fn open(path: &PathBuf) -> Result<Self> {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
-        State {
+        Self {
             conn: Connection::open(path)?,
         }
         .instantiate()
@@ -68,13 +69,13 @@ impl State {
     }
 
     pub fn open_in_memory() -> Result<Self> {
-        State {
+        Self {
             conn: Connection::open_in_memory()?,
         }
         .instantiate()
     }
 
-    pub fn get(&self, key: String) -> Result<Option<StateValue>> {
+    pub fn get(&self, key: &str) -> Result<Option<StateValue>> {
         let mut statement = self
             .conn
             .prepare_cached("SELECT value FROM Cache WHERE key = :key")?;
@@ -83,10 +84,7 @@ impl State {
             let state_value: StateValue = serde_json::from_str(&value).unwrap();
             Ok(state_value)
         })?;
-        match rows.next() {
-            None => Ok(None),
-            Some(value) => Ok(value.ok()),
-        }
+        Ok(rows.next().and_then(Result::ok))
     }
 
     pub fn get_many<'a>(
@@ -98,8 +96,8 @@ impl State {
         let mut res = HashMap::new();
 
         for chunk in &items.chunks(batch_size) {
-            let mut vector: Vec<&dyn ToSql> = Vec::new();
             let chunk: Vec<_> = chunk.collect();
+            let mut vector: Vec<&dyn ToSql> = Vec::with_capacity(chunk.len());
             for item in chunk {
                 vector.push(item);
             }
@@ -120,7 +118,7 @@ impl State {
         Ok(res)
     }
 
-    pub fn set(&self, key: String, value: &StateValue) -> Result<()> {
+    pub fn set(&self, key: &str, value: &StateValue) -> Result<()> {
         let mut statement = self.conn.prepare_cached(
             "INSERT OR REPLACE INTO Cache(
             key, raw, store_time, expire_time, access_time, tag, mode, filename, value)
@@ -154,14 +152,14 @@ impl State {
             let raw_query = prepare_insert(chunk.len());
             let mut statement = transaction.prepare_cached(raw_query.as_str())?;
 
-            let mut params = Vec::new();
-            let mut vector = Vec::new();
+            let mut params = Vec::with_capacity(chunk.len() * 4);
+            let mut vector = Vec::with_capacity(chunk.len());
             for (key, value) in &chunk {
                 let value = serde_json::to_string(&value).unwrap();
                 let value = value.replace(',', ", ").replace(':', ": ");
                 vector.push((key, time, value));
             }
-            for batch in vector.iter() {
+            for batch in &vector {
                 params.push(&batch.0 as &dyn ToSql);
                 params.push(&batch.1 as &dyn ToSql);
                 params.push(&batch.1 as &dyn ToSql);
@@ -179,10 +177,9 @@ impl State {
             .prepare_cached("SELECT EXISTS (SELECT 1 FROM Cache)")?;
 
         let mut rows = statement.query(())?;
-        match rows.next()? {
-            None => Ok(true),
-            Some(v) => Ok(v.get::<usize, usize>(0).unwrap() == 0),
-        }
+        Ok(rows
+            .next()?
+            .map_or(true, |v| v.get::<usize, usize>(0).unwrap() == 0))
     }
 }
 

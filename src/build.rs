@@ -67,9 +67,9 @@ fn get_hashes(
         let key = file.to_str().unwrap().to_string();
         match m.remove(&key) {
             Some(v) if v.checksum == file_info.checksum => {
-                let oid = v.hash_info.oid.to_owned();
+                let oid = v.hash_info.oid.clone();
                 let file_info = FileInfo::from_state(&file_info.path, v);
-                cached_entries.push((file_info, oid))
+                cached_entries.push((file_info, oid));
             }
             _ => new_files.push(file_info),
         }
@@ -105,14 +105,14 @@ fn _build_file(root: &PathBuf, state: Option<&State>) -> (Object, u64) {
     let state_value: Option<StateValue> = match state {
         None => None,
         Some(s) => {
-            let value = s.get((*root).to_str().unwrap().to_string()).unwrap();
+            let value = s.get((*root).to_str().unwrap()).unwrap();
             match value {
                 None => None,
                 Some(st) => {
-                    if st.checksum != file_info.checksum {
-                        None
-                    } else {
+                    if st.checksum == file_info.checksum {
                         Some(st)
+                    } else {
+                        None
                     }
                 }
             }
@@ -120,7 +120,7 @@ fn _build_file(root: &PathBuf, state: Option<&State>) -> (Object, u64) {
     };
     let oid = match state_value {
         None => {
-            let oid = file_md5(root.to_path_buf());
+            let oid = file_md5(root);
             let sv = StateValue {
                 checksum: file_info.checksum.to_string(),
                 hash_info: StateHash {
@@ -129,7 +129,7 @@ fn _build_file(root: &PathBuf, state: Option<&State>) -> (Object, u64) {
                 size: file_info.size,
             };
             if let Some(s) = state {
-                s.set(root.to_str().unwrap().to_string(), &sv).unwrap();
+                s.set(root.to_str().unwrap(), &sv).unwrap();
             };
             oid
         }
@@ -191,7 +191,7 @@ pub fn build(
     let hash_start = Instant::now();
     let new_entries: Vec<(&FileInfo, String)> = new_files
         .par_iter()
-        .map(|file_info| (file_info, file_md5(file_info.path.to_path_buf())))
+        .map(|file_info| (file_info, file_md5(&file_info.path)))
         .collect();
     debug!("time to hash {:?}", hash_start.elapsed());
 
@@ -200,15 +200,16 @@ pub fn build(
     debug!("time to save hashes {:?}", save_hashes_start.elapsed());
 
     let build_tree_start = Instant::now();
-    let mut tree_entries: Vec<(PathBuf, String)> = Vec::new();
+    let mut tree_entries: Vec<(PathBuf, String)> =
+        Vec::with_capacity(cached_entries.len() + new_entries.len());
     for (file_info, oid) in cached_entries {
         let relpath = file_info.path.strip_prefix(&root).unwrap().to_path_buf();
-        tree_entries.push((relpath, oid.to_owned()))
+        tree_entries.push((relpath, oid.clone()));
     }
 
     for (file_info, oid) in new_entries {
         let relpath = file_info.path.strip_prefix(&root).unwrap().to_path_buf();
-        tree_entries.push((relpath, oid.to_owned()))
+        tree_entries.push((relpath, oid.clone()));
     }
 
     tree_entries.par_sort_unstable(); // sort keys

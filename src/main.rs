@@ -1,14 +1,20 @@
+use ansi_term::Colour::{Green, Yellow};
 use clap::{Parser, Subcommand};
 use console::style;
+use dvc_data::diff::Diff;
 use dvc_data::ignore::get_ignore;
-use dvc_data::ignorelist;
 use dvc_data::repo::Repo;
+use dvc_data::status::{status, status_git};
 use dvc_data::{build, checkout, checkout_obj, create_pool, transfer, DvcFile, Object};
+use dvc_data::{diff, ignorelist};
 use env_logger::Env;
+use git2::Repository;
 use log::debug;
+use std::env::set_current_dir;
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
+use std::str;
 
 #[derive(Debug, Parser)]
 #[command(name = "dvc-data")]
@@ -19,6 +25,9 @@ struct Cli {
 
     #[arg(short, long)]
     verbose: bool,
+
+    #[arg(long)]
+    cd: Option<PathBuf>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -44,6 +53,13 @@ enum Commands {
     Checkout {
         path: PathBuf,
     },
+    Diff {
+        old: String,
+        new: Option<String>,
+    },
+    Status {
+        path: PathBuf,
+    },
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -51,6 +67,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let level = if args.verbose { "debug" } else { "warn" };
     env_logger::Builder::from_env(Env::default().default_filter_or(level)).init();
 
+    if let Some(dir) = args.cd {
+        set_current_dir(dir)?;
+    }
     return match args.command {
         Commands::Build {
             path,
@@ -134,6 +153,95 @@ fn main() -> Result<(), Box<dyn Error>> {
                 eprintln!("link type other than 'reflink,copy' is unsupported.");
             }
             checkout(&repo.odb, &path);
+            Ok(())
+        }
+        Commands::Diff { old, new } => {
+            let repo = Repo::discover(None)?;
+            let d = diff::diff_oid(&repo.odb, Some(&old), new.as_deref());
+
+            for (path, key) in d.added {
+                println!("added: {} ({})", path.to_string_lossy(), key);
+            }
+            for (path, key) in d.removed {
+                println!("removed: {} ({})", path.to_string_lossy(), key);
+            }
+            for (path, (new, old)) in d.modified {
+                println!(
+                    "modified: {} ({}) -> {} ({})",
+                    path.to_string_lossy(),
+                    old,
+                    path.to_string_lossy(),
+                    new
+                );
+            }
+
+            const ROOT: &str = "root";
+            match diff::diff_root_oid(Some(&old), new.as_deref()) {
+                diff::State::Added => println!("added: {} ({})", ROOT, old),
+                diff::State::Modified => {
+                    println!("modifie: {} ({}) -> {} ({})", ROOT, old, ROOT, new.unwrap())
+                }
+                diff::State::Removed => println!("removed: {} ({})", ROOT, old),
+                _ => (),
+            };
+            Ok(())
+        }
+        Commands::Status { path } => {
+            let repo = Repo::discover(None)?;
+            let threads = create_pool(repo.config.core.checksum_jobs);
+            let state = Some(&repo.state);
+
+            let abspath = fs::canonicalize(path.clone())?;
+            let ignore = get_ignore(&repo.root, abspath.parent().unwrap());
+
+            let diff = match Repository::discover(repo.root) {
+                Ok(git_repo) => status_git(&git_repo, &repo.odb, &path),
+                Err(e) => {
+                    debug!("{}", e);
+                    Diff::default()
+                }
+            };
+            let commit_diff = if !(diff.added.is_empty()
+                && diff.modified.is_empty()
+                && diff.removed.is_empty())
+            {
+                println!("DVC committed changes:");
+                for added in diff.added.keys() {
+                    let line = format!("{}: {}", "added", added.to_string_lossy());
+                    println!("\t{}", Green.paint(line));
+                }
+                for added in diff.modified.keys() {
+                    let line = format!("{}: {}", "modified", added.to_string_lossy());
+                    println!("\t{}", Green.paint(line));
+                }
+                for added in diff.removed.keys() {
+                    let line = format!("{}: {}", "deleted", added.to_string_lossy());
+                    println!("\t{}", Green.paint(line));
+                }
+                true
+            } else {
+                false
+            };
+
+            let diff = status(&repo.odb, state, &ignore, threads, &path);
+            if !(diff.added.is_empty() && diff.modified.is_empty() && diff.removed.is_empty()) {
+                if commit_diff {
+                    println!();
+                }
+                println!("DVC uncommitted changes:");
+                for added in diff.added.keys() {
+                    let line = format!("{}: {}", "added", added.to_string_lossy());
+                    println!("\t{}", Yellow.paint(line));
+                }
+                for added in diff.modified.keys() {
+                    let line = format!("{}: {}", "modified", added.to_string_lossy());
+                    println!("\t{}", Yellow.paint(line));
+                }
+                for added in diff.removed.keys() {
+                    let line = format!("{}: {}", "deleted", added.to_string_lossy());
+                    println!("\t{}", Yellow.paint(line));
+                }
+            }
             Ok(())
         }
     };

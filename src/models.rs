@@ -32,7 +32,7 @@ impl DvcFile {
             nfiles,
             path: path.to_path_buf(),
         };
-        let dvcfile_obj = DvcFile { outs: (output,) };
+        let dvcfile_obj = Self { outs: (output,) };
         let contents = serde_yaml::to_string(&dvcfile_obj).unwrap();
         let processed = contents
             .strip_prefix("---")

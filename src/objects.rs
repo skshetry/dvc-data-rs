@@ -3,6 +3,7 @@ use json::{object, parse, stringify, JsonValue};
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(Clone)]
 pub enum Object {
     Tree(Tree),
     HashFile(HashFile),
@@ -10,6 +11,7 @@ pub enum Object {
 
 pub type HashFile = String;
 
+#[derive(Default, Clone)]
 pub struct Tree {
     pub entries: Vec<(PathBuf, String)>,
 }
@@ -17,7 +19,7 @@ pub struct Tree {
 impl Tree {
     pub fn serialize(&self) -> String {
         let mut data = JsonValue::new_array();
-        for (path, oid) in self.entries.iter() {
+        for (path, oid) in &self.entries {
             data.push(object! {md5: oid.as_str(), relpath: path.to_str()})
                 .unwrap();
         }

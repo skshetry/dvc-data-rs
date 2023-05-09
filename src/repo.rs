@@ -57,7 +57,7 @@ impl Repo {
 
         let db_dir = match &config.core.site_cache_dir {
             Some(v) => v.clone(),
-            None => Repo::db_dir(&root),
+            None => Self::db_dir(&root),
         };
         let object_dir = match &config.cache.dir {
             Some(v) => v.clone(),

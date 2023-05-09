@@ -10,7 +10,7 @@ where
     R: std::io::Read,
 {
     let mut hasher = Md5::new();
-    let _ = io::copy(reader, &mut hasher);
+    let _: Result<_, _> = io::copy(reader, &mut hasher);
     let hash = hasher.finalize();
     base16ct::lower::encode_string(&hash)
 }
@@ -24,9 +24,9 @@ pub fn is_text_file(path: &PathBuf) -> bool {
     false
 }
 
-pub fn file_md5(path: PathBuf) -> String {
-    let mut file = fs::File::open(&path).unwrap();
-    let md5 = if is_text_file(&path) {
+pub fn file_md5(path: &PathBuf) -> String {
+    let mut file = fs::File::open(path).unwrap();
+    let md5 = if is_text_file(path) {
         println!("dos2unix converting text file: {:?}", &path);
         let mut text = String::new();
         file.read_to_string(&mut text).unwrap();

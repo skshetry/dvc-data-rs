@@ -4,6 +4,7 @@ use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::PathBuf;
 
 pub fn checksum_from_metadata(meta: &fs::Metadata) -> String {
+    #[allow(clippy::cast_precision_loss)]
     let m = meta.mtime() as f64 + (meta.mtime_nsec() as f64 / 1_000_000_000f64);
     let st = "([".to_owned()
         + &meta.ino().to_string()
@@ -29,7 +30,7 @@ pub fn size(path: PathBuf) -> u64 {
 pub fn transfer_file(from: &PathBuf, to: &PathBuf) {
     fs::create_dir_all(to.parent().unwrap()).unwrap();
     reflink::reflink_or_copy(from, to)
-        .unwrap_or_else(|_| panic!("transfer failed: {:?} {:?}", from, to));
+        .unwrap_or_else(|_| panic!("transfer failed: {from:?} {to:?}"));
 }
 
 pub fn protect_file(path: &PathBuf) {

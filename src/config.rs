@@ -47,7 +47,7 @@ where
                 Ok(false)
             }
         }
-        t => Err(de::Error::custom(format!("expected boolean, got {}", t))),
+        t => Err(de::Error::custom(format!("expected boolean, got {t}"))),
     }
 }
 

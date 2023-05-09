@@ -14,7 +14,7 @@ impl IgnoreList {
     fn as_string(&self, existing: impl BufRead) -> String {
         let existing_items = existing.lines().collect::<Result<Vec<_>, _>>().unwrap();
         let mut out = "\n".to_string();
-        for item in self.ignore.iter() {
+        for item in &self.ignore {
             if existing_items.contains(item) {
                 continue;
             }
