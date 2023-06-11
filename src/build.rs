@@ -1,6 +1,6 @@
 use crate::fsutils;
 use crate::hash::file_md5;
-use crate::objects::{Object, Tree};
+use crate::objects::{Object, Tree, TreeEntry};
 use crate::odb::Odb;
 use crate::state::{State, StateHash, StateValue};
 use ignore;
@@ -200,16 +200,22 @@ pub fn build(
     debug!("time to save hashes {:?}", save_hashes_start.elapsed());
 
     let build_tree_start = Instant::now();
-    let mut tree_entries: Vec<(PathBuf, String)> =
+    let mut tree_entries: Vec<TreeEntry> =
         Vec::with_capacity(cached_entries.len() + new_entries.len());
     for (file_info, oid) in cached_entries {
         let relpath = file_info.path.strip_prefix(&root).unwrap().to_path_buf();
-        tree_entries.push((relpath, oid.clone()));
+        tree_entries.push(TreeEntry {
+            relpath,
+            oid: oid.clone(),
+        });
     }
 
     for (file_info, oid) in new_entries {
         let relpath = file_info.path.strip_prefix(&root).unwrap().to_path_buf();
-        tree_entries.push((relpath, oid.clone()));
+        tree_entries.push(TreeEntry {
+            relpath,
+            oid: oid.clone(),
+        });
     }
 
     tree_entries.par_sort_unstable(); // sort keys

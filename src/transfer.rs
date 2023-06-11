@@ -15,7 +15,7 @@ pub fn transfer_obj(root: &Path, from: &PathBuf, oid: &str) {
     protect_file(&to);
 }
 
-pub fn write_obj(root: &Path, oid: &str, contents: &String) {
+pub fn write_obj(root: &Path, oid: &str, contents: &str) {
     let to = oid_to_path(root, oid);
     if to.exists() {
         return;
@@ -28,15 +28,12 @@ pub fn write_obj(root: &Path, oid: &str, contents: &String) {
 pub fn transfer_tree(odb: &Odb, wroot: &Path, tree: &Tree) -> String {
     let pb = ProgressBar::new(tree.entries.len() as u64);
     fs::create_dir_all(&odb.path).unwrap();
-    tree.entries
-        .par_iter()
-        .progress_with(pb)
-        .for_each(|(path, oid)| {
-            let file = wroot.join(path);
-            transfer_obj(&odb.path, &file, oid);
-        });
+    tree.entries.par_iter().progress_with(pb).for_each(|entry| {
+        let file = wroot.join(&entry.relpath);
+        transfer_obj(&odb.path, &file, &entry.oid);
+    });
 
-    let (serialized, oid) = tree.digest();
+    let (serialized, oid) = tree.digest().unwrap();
     write_obj(&odb.path, &oid, &serialized);
     oid
 }

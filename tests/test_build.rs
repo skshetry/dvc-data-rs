@@ -1,4 +1,5 @@
 use dvc_data::ignore::get_ignore;
+use dvc_data::objects::TreeEntry;
 use dvc_data::repo::Repo;
 use dvc_data::Object::Tree;
 use dvc_data::{build, create_pool};
@@ -16,7 +17,6 @@ pub fn test_build() {
     t!(fs::create_dir(dir.path().join("data")));
     let data_dir = dir.path().join("data");
 
-    write_to_temp_file(dir.path(), "foo", "foo\n");
     write_to_temp_file(data_dir.as_path(), "bar", "bar\n");
     write_to_temp_file(data_dir.as_path(), "baz", "baz\n");
 
@@ -27,30 +27,30 @@ pub fn test_build() {
     let abspath = t!(fs::canonicalize(dir.path()));
     let ignore = get_ignore(&repo.root, abspath.parent().unwrap());
     let (obj, size) = build(&repo.odb, dir.path(), state, &ignore, threads);
-    assert_eq!(size, 15);
+    assert_eq!(size, 10);
     let t = if let Tree(t) = obj {
         t
     } else {
         panic!("Should have returned tree")
     };
 
-    let oid = t.digest().1;
-    assert_eq!(oid, "1517595eb0fce612257347e4c201bcb8.dir");
+    let (text, oid) = t.digest().unwrap();
+    assert_eq!(
+        text,
+        r#"[{"md5": "e5a81dd70644b5534aae9f7c32055ec3", "relpath": "data/bar"}, {"md5": "eceec35e3f3dd774244de59b1094cc59", "relpath": "data/baz"}]"#
+    );
+    assert_eq!(oid, "a187d325e83704a3fad49b2f2ab67d20.dir");
     assert_eq!(
         t.entries,
         vec![
-            (
-                PathBuf::from("data/bar"),
-                "e5a81dd70644b5534aae9f7c32055ec3".to_string()
-            ),
-            (
-                PathBuf::from("data/baz"),
-                "eceec35e3f3dd774244de59b1094cc59".to_string()
-            ),
-            (
-                PathBuf::from("foo"),
-                "dbb53f3699703c028483658773628452".to_string()
-            ),
+            TreeEntry {
+                relpath: PathBuf::from("data/bar"),
+                oid: "e5a81dd70644b5534aae9f7c32055ec3".to_string()
+            },
+            TreeEntry {
+                relpath: PathBuf::from("data/baz"),
+                oid: "eceec35e3f3dd774244de59b1094cc59".to_string()
+            },
         ]
     );
 }

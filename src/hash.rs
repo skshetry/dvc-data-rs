@@ -1,6 +1,7 @@
 use content_inspector::inspect;
 use md5::{Digest, Md5};
 use newline_converter::dos2unix;
+use std::io::read_to_string;
 use std::io::Read;
 use std::path::PathBuf;
 use std::{fs, io};
@@ -28,8 +29,7 @@ pub fn file_md5(path: &PathBuf) -> String {
     let mut file = fs::File::open(path).unwrap();
     let md5 = if is_text_file(path) {
         println!("dos2unix converting text file: {:?}", &path);
-        let mut text = String::new();
-        file.read_to_string(&mut text).unwrap();
+        let text = read_to_string(file).unwrap();
         let new_text = dos2unix(&text);
         let mut bytes = new_text.as_bytes();
         md5(&mut bytes)

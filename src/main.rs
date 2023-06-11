@@ -96,7 +96,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 transfer(&repo.odb, &path, &obj)
             } else {
                 match obj {
-                    Object::Tree(t) => t.digest().1,
+                    Object::Tree(t) => t.digest()?.1,
                     Object::HashFile(hf) => hf,
                 }
             };
@@ -179,7 +179,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             match diff::diff_root_oid(Some(&old), new.as_deref()) {
                 diff::State::Added => println!("added: {} ({})", ROOT, old),
                 diff::State::Modified => {
-                    println!("modifie: {} ({}) -> {} ({})", ROOT, old, ROOT, new.unwrap())
+                    println!(
+                        "modified: {} ({}) -> {} ({})",
+                        ROOT,
+                        old,
+                        ROOT,
+                        new.unwrap()
+                    )
                 }
                 diff::State::Removed => println!("removed: {} ({})", ROOT, old),
                 _ => (),
@@ -210,12 +216,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let line = format!("{}: {}", "added", added.to_string_lossy());
                     println!("\t{}", Green.paint(line));
                 }
-                for added in diff.modified.keys() {
-                    let line = format!("{}: {}", "modified", added.to_string_lossy());
+                for modified in diff.modified.keys() {
+                    let line = format!("{}: {}", "modified", modified.to_string_lossy());
                     println!("\t{}", Green.paint(line));
                 }
-                for added in diff.removed.keys() {
-                    let line = format!("{}: {}", "deleted", added.to_string_lossy());
+                for removed in diff.removed.keys() {
+                    let line = format!("{}: {}", "deleted", removed.to_string_lossy());
                     println!("\t{}", Green.paint(line));
                 }
                 true
@@ -233,12 +239,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let line = format!("{}: {}", "added", added.to_string_lossy());
                     println!("\t{}", Yellow.paint(line));
                 }
-                for added in diff.modified.keys() {
-                    let line = format!("{}: {}", "modified", added.to_string_lossy());
+                for modified in diff.modified.keys() {
+                    let line = format!("{}: {}", "modified", modified.to_string_lossy());
                     println!("\t{}", Yellow.paint(line));
                 }
-                for added in diff.removed.keys() {
-                    let line = format!("{}: {}", "deleted", added.to_string_lossy());
+                for removed in diff.removed.keys() {
+                    let line = format!("{}: {}", "deleted", removed.to_string_lossy());
                     println!("\t{}", Yellow.paint(line));
                 }
             }

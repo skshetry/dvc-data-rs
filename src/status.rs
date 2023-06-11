@@ -77,7 +77,7 @@ pub fn status_git(git_repo: &git2::Repository, odb: &Odb, dvcfile_path: &PathBuf
 
     let old_obj = if old_oid.ends_with(".dir") {
         let obj_path = oid_to_path(&odb.path, &old_oid);
-        let tree = Tree::load_from(&obj_path);
+        let tree = Tree::load_from(&obj_path).unwrap();
         Object::Tree(tree)
     } else {
         Object::HashFile(old_oid.clone())
@@ -85,7 +85,7 @@ pub fn status_git(git_repo: &git2::Repository, odb: &Odb, dvcfile_path: &PathBuf
 
     let new_obj = if new_oid.ends_with(".dir") {
         let obj_path = oid_to_path(&odb.path, &new_oid);
-        let tree = Tree::load_from(&obj_path);
+        let tree = Tree::load_from(&obj_path).unwrap();
         Object::Tree(tree)
     } else {
         Object::HashFile(new_oid.clone())
@@ -111,14 +111,14 @@ pub fn status(
 
     let old_obj = if oid.ends_with(".dir") {
         let obj_path = oid_to_path(&odb.path, &oid);
-        let tree = Tree::load_from(&obj_path);
+        let tree = Tree::load_from(&obj_path).unwrap();
         Object::Tree(tree)
     } else {
         Object::HashFile(oid.clone())
     };
 
     let obj_oid = match obj {
-        Object::Tree(ref t) => t.digest().1,
+        Object::Tree(ref t) => t.digest().unwrap().1,
         Object::HashFile(ref o) => o.to_string(),
     };
     let diff = diff_obj(&path, Some(old_obj), Some(obj));

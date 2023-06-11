@@ -7,6 +7,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::json_format;
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct StateHash {
     #[serde(rename = "md5")]
@@ -126,8 +128,7 @@ impl State {
         )?;
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let time = as_fractional_seconds(now);
-        let value = serde_json::to_string(value).unwrap();
-        let value = value.replace(',', ", ").replace(':', ": ");
+        let value = json_format::to_string(&value).unwrap();
         statement.execute(named_params! {
             ":key": key,
             ":raw": 1,
@@ -155,8 +156,7 @@ impl State {
             let mut params = Vec::with_capacity(chunk.len() * 4);
             let mut vector = Vec::with_capacity(chunk.len());
             for (key, value) in &chunk {
-                let value = serde_json::to_string(&value).unwrap();
-                let value = value.replace(',', ", ").replace(':', ": ");
+                let value = json_format::to_string(&value).unwrap();
                 vector.push((key, time, value));
             }
             for batch in &vector {

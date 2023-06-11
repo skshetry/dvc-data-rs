@@ -10,19 +10,15 @@ use std::path::PathBuf;
 pub fn checkout_obj(odb: &Odb, oid: &str, to: &PathBuf) {
     let from = oid_to_path(&odb.path, oid);
     if oid.ends_with(".dir") {
-        let tree = Tree::load_from(&from);
+        let tree = Tree::load_from(&from).unwrap();
         let pb = ProgressBar::new(tree.entries.len() as u64);
 
         fs::create_dir_all(to).unwrap();
-        return tree
-            .entries
-            .par_iter()
-            .progress_with(pb)
-            .for_each(|(path, oid)| {
-                let src = oid_to_path(&odb.path, oid);
-                let dst = to.join(path);
-                transfer_file(&src, &dst);
-            });
+        return tree.entries.par_iter().progress_with(pb).for_each(|entry| {
+            let src = oid_to_path(&odb.path, &entry.oid);
+            let dst = to.join(&entry.relpath);
+            transfer_file(&src, &dst);
+        });
     }
     transfer_file(&from, to);
 }

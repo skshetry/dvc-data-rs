@@ -49,7 +49,7 @@ pub fn diff_oid(odb: &Odb, old: Option<&str>, new: Option<&str>) -> Diff {
         None => None,
         Some(t) if t.ends_with(".dir") => {
             let path = oid_to_path(&odb.path, t);
-            Some(Object::Tree(Tree::load_from(&path)))
+            Some(Object::Tree(Tree::load_from(&path).unwrap()))
         }
         Some(o) => Some(Object::HashFile(o.to_string())),
     };
@@ -58,7 +58,7 @@ pub fn diff_oid(odb: &Odb, old: Option<&str>, new: Option<&str>) -> Diff {
         new if new == old => old_obj.clone(),
         Some(t) if t.ends_with(".dir") => {
             let path = oid_to_path(&odb.path, t);
-            Some(Object::Tree(Tree::load_from(&path)))
+            Some(Object::Tree(Tree::load_from(&path).unwrap()))
         }
         Some(o) => Some(Object::HashFile(o.to_string())),
     };
@@ -137,10 +137,18 @@ pub fn diff_root(root: &Path, old: Option<&str>, new: Option<&str>) -> Diff {
 
 pub fn diff_tree(old: Option<Tree>, new: Option<Tree>) -> Diff {
     let old_tree = old.unwrap_or_default();
-    let old_hm: HashMap<PathBuf, String> = old_tree.entries.into_iter().collect();
+    let old_hm: HashMap<PathBuf, String> = old_tree
+        .entries
+        .into_iter()
+        .map(|e| (e.relpath, e.oid))
+        .collect();
 
     let new_tree = new.unwrap_or_default();
-    let new_hm: HashMap<PathBuf, String> = new_tree.entries.into_iter().collect();
+    let new_hm: HashMap<PathBuf, String> = new_tree
+        .entries
+        .into_iter()
+        .map(|e| (e.relpath, e.oid))
+        .collect();
 
     let mut removed: HashMap<PathBuf, String> = HashMap::new();
     for (key, value) in &old_hm {

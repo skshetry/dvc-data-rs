@@ -16,6 +16,7 @@ pub mod fsutils;
 pub mod hash;
 pub mod ignore;
 pub mod ignorelist;
+pub mod json_format;
 pub mod models;
 pub mod objects;
 pub mod odb;
