@@ -15,7 +15,6 @@ use std::{env, io};
 #[derive(Debug)]
 pub struct Repo {
     pub root: PathBuf,
-    pub tmp_dir: PathBuf,
     pub odb: Odb,
     pub state: State,
     pub config: Config,
@@ -102,7 +101,6 @@ impl Repo {
         let state_path = db_dir.join("hashes/local/cache.db");
         let repo = Self {
             root,
-            tmp_dir,
             odb: Odb { path: object_dir },
             state: State::open(&state_path)?.instantiate()?,
             config,
