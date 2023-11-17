@@ -1,13 +1,3 @@
-#![warn(clippy::perf, clippy::pedantic)]
-#![allow(
-    clippy::must_use_candidate,
-    clippy::missing_errors_doc,
-    clippy::missing_panics_doc,
-    clippy::module_name_repetitions,
-    clippy::case_sensitive_file_extension_comparisons,
-    clippy::return_self_not_must_use
-)]
-
 pub mod build;
 pub mod checkout;
 pub mod config;

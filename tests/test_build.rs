@@ -28,9 +28,8 @@ pub fn test_build() {
     let ignore = get_ignore(&repo.root, abspath.parent().unwrap());
     let (obj, size) = build(&repo.odb, dir.path(), state, &ignore, threads);
     assert_eq!(size, 10);
-    let t = if let Tree(t) = obj {
-        t
-    } else {
+
+    let Tree(t) = obj else {
         panic!("Should have returned tree")
     };
 

@@ -16,6 +16,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::str;
 
+const ROOT: &str = "root";
 #[derive(Debug, Parser)]
 #[command(name = "dvc-data")]
 #[command(about = "dvc-data in rust", long_about = None)]
@@ -62,6 +63,7 @@ enum Commands {
     },
 }
 
+#[allow(clippy::too_many_lines)]
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::parse();
     let level = if args.verbose { "debug" } else { "warn" };
@@ -100,7 +102,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     Object::HashFile(hf) => hf,
                 }
             };
-            println!("object {}", oid);
+            println!("object {oid}");
 
             Ok(())
         }
@@ -117,7 +119,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             let oid = transfer(&repo.odb, &path, &obj);
             let filename: String = path.file_name().unwrap().to_str().unwrap().into();
-            let dvcfile = path.with_file_name(format!("{}.dvc", filename));
+            let dvcfile = path.with_file_name(format!("{filename}.dvc"));
             eprintln!(
                 "    {} {}",
                 style("Created").green().bold(),
@@ -125,7 +127,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             );
             let nfiles = match obj {
                 Object::Tree(t) => Some(t.entries.len()),
-                _ => None,
+                Object::HashFile(_) => None,
             };
             DvcFile::create(&dvcfile, path.as_path(), oid, Some(size), nfiles);
 
@@ -175,9 +177,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 );
             }
 
-            const ROOT: &str = "root";
             match diff::diff_root_oid(Some(&old), new.as_deref()) {
-                diff::State::Added => println!("added: {} ({})", ROOT, old),
+                diff::State::Added => println!("added: {ROOT} ({old})"),
                 diff::State::Modified => {
                     println!(
                         "modified: {} ({}) -> {} ({})",
@@ -185,10 +186,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                         old,
                         ROOT,
                         new.unwrap()
-                    )
+                    );
                 }
-                diff::State::Removed => println!("removed: {} ({})", ROOT, old),
-                _ => (),
+                diff::State::Removed => println!("removed: {ROOT} ({old})"),
+                diff::State::Unchanged => (),
             };
             Ok(())
         }
@@ -207,10 +208,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     Diff::default()
                 }
             };
-            let commit_diff = if !(diff.added.is_empty()
-                && diff.modified.is_empty()
-                && diff.removed.is_empty())
-            {
+            let commit_diff = !diff.is_empty() && {
                 println!("DVC committed changes:");
                 for added in diff.added.keys() {
                     let line = format!("{}: {}", "added", added.to_string_lossy());
@@ -225,12 +223,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                     println!("\t{}", Green.paint(line));
                 }
                 true
-            } else {
-                false
             };
 
             let diff = status(&repo.odb, state, &ignore, threads, &path);
-            if !(diff.added.is_empty() && diff.modified.is_empty() && diff.removed.is_empty()) {
+            if !diff.is_empty() {
                 if commit_diff {
                     println!();
                 }

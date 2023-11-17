@@ -11,6 +11,7 @@ pub struct Diff {
 }
 
 impl Diff {
+    #[must_use]
     pub fn merge(mut self, other: Self) -> Self {
         self.added.extend(other.added);
         self.modified.extend(other.modified);
@@ -22,6 +23,10 @@ impl Diff {
             removed: self.removed,
             unchanged: self.unchanged,
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.added.is_empty() && self.modified.is_empty() && self.removed.is_empty()
     }
 }
 

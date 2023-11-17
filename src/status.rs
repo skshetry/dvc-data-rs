@@ -56,7 +56,7 @@ pub fn status_git(git_repo: &git2::Repository, odb: &Odb, dvcfile_path: &PathBuf
     };
 
     let Ok(git_odb) = git_repo.odb() else {
-        return Diff::default()
+        return Diff::default();
     };
     let git_obj = git_odb.read(oid).expect("object with oid");
     let data = git_obj.data();

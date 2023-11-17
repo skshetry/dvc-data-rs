@@ -42,7 +42,7 @@ fn db_dirs() -> PathBuf {
     "/var/tmp/dvc/repo".into()
 }
 
-#[cfg(any(target_os = "macos"))]
+#[cfg(target_os = "macos")]
 fn db_dirs() -> PathBuf {
     "/Library/Caches/dvc/repo".into()
 }

@@ -6,7 +6,6 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize, Default)]
-#[allow(unused)]
 pub struct Core {
     #[serde(default, deserialize_with = "deserialize_bool")]
     pub no_scm: bool,
@@ -17,7 +16,6 @@ pub struct Core {
 }
 
 #[derive(Debug, Deserialize, Default)]
-#[allow(unused)]
 pub struct Cache {
     #[serde(default)]
     pub dir: Option<PathBuf>,
@@ -26,7 +24,6 @@ pub struct Cache {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(unused)]
 pub struct Config {
     #[serde(default)]
     pub core: Core,
