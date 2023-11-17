@@ -92,7 +92,7 @@ impl Repo {
 
         let db_dir = match &config.core.site_cache_dir {
             Some(v) => v.clone(),
-            None => Self::db_dir(&root, &tmp_dir),
+            None => db_dirs().join(db_dirname(&root, &tmp_dir)),
         };
         let object_dir = match &config.cache.dir {
             Some(v) => v.clone(),
@@ -120,17 +120,5 @@ impl Repo {
             }
         }
         Err("No repository found".into())
-    }
-
-    pub fn control_dir(&self) -> PathBuf {
-        self.root.join(".dvc")
-    }
-
-    pub fn tmp_dir(&self) -> PathBuf {
-        self.control_dir().join("tmp")
-    }
-
-    pub fn db_dir(root: &Path, tmp_dir: &Path) -> PathBuf {
-        db_dirs().join(db_dirname(root, tmp_dir))
     }
 }
