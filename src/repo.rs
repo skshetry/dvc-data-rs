@@ -45,7 +45,7 @@ fn btime(tmp_dir: &Path) -> Result<f64, io::Error> {
 fn db_dirname(root: &Path, tmp_dir: &Path) -> String {
     use std::os::unix::ffi::OsStrExt;
     let btime = btime(tmp_dir).unwrap();
-    let user = users::get_current_username().unwrap();
+    let user = uzers::get_current_username().unwrap();
     let dvc_major = 3;
     let salt = 2;
 

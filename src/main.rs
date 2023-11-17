@@ -1,4 +1,3 @@
-use ansi_term::Colour::{Green, Yellow};
 use clap::{Parser, Subcommand};
 use console::style;
 use dvc_data::diff::Diff;
@@ -212,15 +211,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 println!("DVC committed changes:");
                 for added in diff.added.keys() {
                     let line = format!("{}: {}", "added", added.to_string_lossy());
-                    println!("\t{}", Green.paint(line));
+                    println!("\t{}", style(line).green());
                 }
                 for modified in diff.modified.keys() {
                     let line = format!("{}: {}", "modified", modified.to_string_lossy());
-                    println!("\t{}", Green.paint(line));
+                    println!("\t{}", style(line).green());
                 }
                 for removed in diff.removed.keys() {
                     let line = format!("{}: {}", "deleted", removed.to_string_lossy());
-                    println!("\t{}", Green.paint(line));
+                    println!("\t{}", style(line).green());
                 }
                 true
             };
@@ -233,15 +232,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 println!("DVC uncommitted changes:");
                 for added in diff.added.keys() {
                     let line = format!("{}: {}", "added", added.to_string_lossy());
-                    println!("\t{}", Yellow.paint(line));
+                    println!("\t{}", style(line).yellow());
                 }
                 for modified in diff.modified.keys() {
                     let line = format!("{}: {}", "modified", modified.to_string_lossy());
-                    println!("\t{}", Yellow.paint(line));
+                    println!("\t{}", style(line).yellow());
                 }
                 for removed in diff.removed.keys() {
                     let line = format!("{}: {}", "deleted", removed.to_string_lossy());
-                    println!("\t{}", Yellow.paint(line));
+                    println!("\t{}", style(line).yellow());
                 }
             }
             Ok(())
