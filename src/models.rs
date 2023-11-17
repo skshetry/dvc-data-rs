@@ -10,6 +10,7 @@ pub struct Output {
     pub size: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nfiles: Option<usize>,
+    pub hash: String,
     pub path: PathBuf,
 }
 
@@ -30,6 +31,7 @@ impl DvcFile {
             oid,
             size,
             nfiles,
+            hash: "md5".to_string(),
             path: path.to_path_buf(),
         };
         let dvcfile_obj = Self { outs: (output,) };
