@@ -33,12 +33,6 @@ git2 = "0.18.1"
 [dev-dependencies]
 tempfile = "3.8.1"
 
-[profile.release]
-debug = true
-lto = "fat"
-panic = "abort"
-codegen-units = 1
-
 [lints.rust]
 unsafe_code = "forbid"
 
