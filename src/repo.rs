@@ -1,5 +1,4 @@
 use std::ffi::OsString;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use log::debug;
@@ -8,6 +7,7 @@ use crate::config::Config;
 use crate::hash::md5;
 use crate::odb::Odb;
 use crate::state::State;
+use crate::timeutils::unix_time;
 use std::error::Error;
 use std::fs;
 use std::{env, io};
@@ -32,25 +32,23 @@ fn btime(tmp_dir: &Path) -> Result<f64, io::Error> {
 
     match result {
         Ok(()) => match fs::metadata(btime) {
-            #[allow(clippy::cast_precision_loss)]
-            Ok(meta) => Ok(meta.mtime() as f64 + (meta.mtime_nsec() as f64 / 1_000_000_000f64)),
+            Ok(meta) => Ok(unix_time(meta.modified()?).unwrap()),
             Err(e) => Err(e),
         },
         Err(e) => Err(e),
     }
 }
 
-#[cfg(unix)]
 fn db_dirname(root: &Path, tmp_dir: &Path) -> String {
-    use std::os::unix::ffi::OsStrExt;
     let btime = btime(tmp_dir).unwrap();
-    let user = uzers::get_current_username().unwrap();
+    let user = whoami::username();
     let dvc_major = 3;
-    let salt = 2;
+    let salt = 0;
 
     let mut st: OsString = "('".into();
     st.push(root.as_os_str());
     st.push("', ");
+    st.push("None, "); // subdir
     st.push(btime.to_string());
     st.push(", '");
     st.push(user);
@@ -60,7 +58,7 @@ fn db_dirname(root: &Path, tmp_dir: &Path) -> String {
     st.push(salt.to_string());
     st.push(")");
 
-    md5(&mut st.as_bytes())
+    md5(&mut st.as_encoded_bytes())
 }
 
 #[cfg(not(any(
@@ -71,6 +69,12 @@ fn db_dirname(root: &Path, tmp_dir: &Path) -> String {
 )))]
 fn db_dirs() -> PathBuf {
     "/var/tmp/dvc/repo".into()
+}
+
+#[cfg(target_os = "windows")]
+fn db_dirs() -> PathBuf {
+    Path::new(&env::var("CSIDL_COMMON_APPDATA").unwrap_or("C:/ProgramData/iterative/dvc".into()))
+        .to_owned()
 }
 
 #[cfg(target_os = "macos")]

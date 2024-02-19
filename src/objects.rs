@@ -1,11 +1,12 @@
 use crate::hash::md5;
 use crate::json_format;
-use serde::{Deserialize, Serialize};
+use itertools::Itertools;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::convert::From;
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone)]
 pub enum Object {
@@ -17,6 +18,7 @@ pub type HashFile = String;
 
 #[derive(Deserialize, Clone, PartialEq, Debug, PartialOrd, Ord, Eq)]
 pub struct TreeEntry {
+    #[serde(deserialize_with = "posixstr_to_ospath")]
     pub relpath: PathBuf,
     #[serde(rename = "md5")]
     pub oid: String,
@@ -27,6 +29,7 @@ pub struct TreeEntry {
 struct TreeEntrySerializer {
     #[serde(rename = "md5")]
     pub oid: String,
+    #[serde(serialize_with = "posixify_path")]
     pub relpath: PathBuf,
 }
 
@@ -52,6 +55,21 @@ impl Serialize for TreeEntry {
     {
         TreeEntrySerializer::from(self).serialize(serializer)
     }
+}
+
+fn posixify_path<S>(x: &Path, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    s.serialize_str(&x.iter().map(|p| p.to_str().unwrap()).join("/"))
+}
+
+fn posixstr_to_ospath<'de, D>(deserializer: D) -> Result<PathBuf, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: &str = Deserialize::deserialize(deserializer)?;
+    Ok(s.split('/').collect())
 }
 
 impl Tree {

@@ -1,30 +1,30 @@
 use crate::hash::md5;
+use core::panic;
 use std::fs;
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-pub fn checksum_from_metadata(meta: &fs::Metadata) -> String {
-    #[allow(clippy::cast_precision_loss)]
-    let m = meta.mtime() as f64 + (meta.mtime_nsec() as f64 / 1_000_000_000f64);
+pub fn compute_checksum(ut: f64, ino: u128, size: u64) -> String {
     let st = "([".to_owned()
-        + &meta.ino().to_string()
+        + &ino.to_string()
         + ", "
-        + &m.to_string()
+        + &ut.to_string()
         + ", "
-        + &meta.size().to_string()
+        + &size.to_string()
         + "],)";
     let hash = md5(&mut st.as_bytes());
     u128::from_str_radix(&hash, 16).unwrap().to_string()
 }
 
-pub fn checksum(path: &PathBuf) -> String {
-    let meta = fs::metadata(path).unwrap();
-    checksum_from_metadata(&meta)
+#[cfg(unix)]
+pub fn size_from_meta(meta: &fs::Metadata) -> u64 {
+    use std::os::unix::fs::MetadataExt;
+    meta.size()
 }
 
-pub fn size(path: PathBuf) -> u64 {
-    let meta = fs::metadata(path).unwrap();
-    meta.size()
+#[cfg(windows)]
+pub fn size_from_meta(meta: &fs::Metadata) -> u64 {
+    use std::os::windows::fs::MetadataExt;
+    meta.file_size()
 }
 
 pub fn transfer_file(from: &PathBuf, to: &PathBuf) {
@@ -33,7 +33,8 @@ pub fn transfer_file(from: &PathBuf, to: &PathBuf) {
         .unwrap_or_else(|_| panic!("transfer failed: {from:?} {to:?}"));
 }
 
-pub fn protect_file(path: &PathBuf) {
-    let permission = fs::Permissions::from_mode(0o444);
-    fs::set_permissions(path, permission).unwrap_or_default();
+pub fn protect_file(path: &Path) {
+    if let Ok(m) = path.metadata() {
+        m.permissions().set_readonly(true);
+    }
 }

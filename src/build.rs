@@ -1,17 +1,17 @@
-use crate::fsutils;
+use crate::fsutils::{compute_checksum, size_from_meta};
 use crate::hash::file_md5;
 use crate::objects::{Object, Tree, TreeEntry};
 use crate::odb::Odb;
 use crate::state::{State, StateHash, StateValue};
+use crate::timeutils::unix_time;
 use ignore;
 use ignore::gitignore::Gitignore;
 use jwalk::{Parallelism, WalkDir};
 use log::debug;
 use rayon::prelude::*;
-use std::fs;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+use std::{fs, u128};
 struct FileInfo {
     checksum: String,
     path: PathBuf,
@@ -20,9 +20,38 @@ struct FileInfo {
 
 impl FileInfo {
     fn from_metadata(path: &Path, meta: &fs::Metadata) -> Self {
+        let ut = unix_time(meta.modified().unwrap()).unwrap();
+        let ino: u128 = {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                u128::from(meta.ino())
+            }
+
+            #[cfg(windows)]
+            {
+                use file_id::{get_file_id, FileId};
+                match get_file_id(path).unwrap() {
+                    FileId::LowRes {
+                        volume_serial_number: _,
+                        file_index,
+                    } => u128::from(file_index),
+                    FileId::HighRes {
+                        volume_serial_number: _,
+                        file_id: id,
+                    } => id,
+                    FileId::Inode {
+                        device_id: _,
+                        inode_number,
+                    } => u128::from(inode_number),
+                }
+            }
+        };
+        let size = size_from_meta(meta);
+        let checksum = compute_checksum(ut, ino, size);
         Self {
-            checksum: fsutils::checksum_from_metadata(meta),
-            size: meta.size(),
+            checksum,
+            size,
             path: path.to_path_buf(),
         }
     }

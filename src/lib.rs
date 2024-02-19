@@ -13,6 +13,7 @@ pub mod odb;
 pub mod repo;
 pub mod state;
 pub mod status;
+pub mod timeutils;
 pub mod transfer;
 
 pub use build::build;

@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use crate::json_format;
+use crate::timeutils::unix_time;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct StateHash {
@@ -22,11 +23,6 @@ pub struct StateValue {
     pub checksum: String,
     pub size: u64,
     pub hash_info: StateHash,
-}
-
-#[allow(clippy::cast_precision_loss)]
-pub fn as_fractional_seconds(dur: Duration) -> f64 {
-    dur.as_secs() as f64 + f64::from(dur.subsec_nanos()) / 1_000_000_000.0
 }
 
 #[derive(Debug)]
@@ -126,8 +122,7 @@ impl State {
             key, raw, store_time, expire_time, access_time, tag, mode, filename, value)
             VALUES (:key, :raw, :store_time, :expire_time, :access_time, :tag, :mode, :filename, :value)",
         )?;
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        let time = as_fractional_seconds(now);
+        let time = unix_time(SystemTime::now()).unwrap();
         let value = json_format::to_string(&value).unwrap();
         statement.execute(named_params! {
             ":key": key,
@@ -144,8 +139,7 @@ impl State {
     }
 
     pub fn set_many(&self, items: impl Iterator<Item = (String, StateValue)>) -> Result<()> {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        let time = as_fractional_seconds(now);
+        let time = unix_time(SystemTime::now()).unwrap();
         let transaction = self.conn.unchecked_transaction()?;
 
         for chunk in &items.chunks(7999) {
