@@ -29,7 +29,7 @@ pub fn size(path: PathBuf) -> u64 {
 
 pub fn transfer_file(from: &PathBuf, to: &PathBuf) {
     fs::create_dir_all(to.parent().unwrap()).unwrap();
-    reflink::reflink_or_copy(from, to)
+    reflink_copy::reflink_or_copy(from, to)
         .unwrap_or_else(|_| panic!("transfer failed: {from:?} {to:?}"));
 }
 
