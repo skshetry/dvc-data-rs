@@ -9,9 +9,9 @@ use ignore::gitignore::Gitignore;
 use jwalk::{Parallelism, WalkDir};
 use log::debug;
 use rayon::prelude::*;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use std::{fs, u128};
 struct FileInfo {
     checksum: String,
     path: PathBuf,
@@ -21,7 +21,7 @@ struct FileInfo {
 impl FileInfo {
     fn from_metadata(path: &Path, meta: &fs::Metadata) -> Self {
         let ut = unix_time(meta.modified().unwrap()).unwrap();
-        let ino: u128 = {
+        let ino = {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::MetadataExt;

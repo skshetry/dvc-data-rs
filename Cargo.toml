@@ -15,42 +15,42 @@ eula = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reflink-copy = "0.1.14"
+reflink-copy = "0.1.19"
 hex = "0.4.3"
 console = "0.15.8"
 num_cpus = "1.16.0"
 md-5 = "0.10.6"
-rayon = "1.8.1"
+rayon = "1.10.0"
 jwalk = "0.8.1"
 base16ct = { version = "0.2.0", features = ["alloc"] }
-clap = { version = "4.5.1", features = ["derive"] }
+clap = { version = "4.5.13", features = ["derive"] }
 indicatif = { version = "0.17.8", features = ["rayon"] }
-rusqlite = { version = "0.31.0", features = ["bundled", "chrono"] }
+rusqlite = { version = "0.32.1", features = ["bundled", "chrono"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0.113", features = ["preserve_order"] }
+serde_json = { version = "1.0.122", features = ["preserve_order"] }
 serde_yaml = "0.9"
 ignore = "0.4.22"
-itertools = "0.12.1"
-env_logger = "0.11.2"
-log = "0.4.20"
+itertools = "0.13.0"
+env_logger = "0.11.5"
+log = "0.4.22"
 config = "0.14.0"
-serde_derive = "1.0.196"
+serde_derive = "1.0.205"
 directories = "5.0.1"
-git2 = { version = "0.18.2", default-features = false }
-whoami = "1.5.0"
+git2 = { version = "0.19.0", default-features = false }
+whoami = "1.5.1"
 
 [target.'cfg(windows)'.dependencies]
 file-id = "0.2.1"
 
 [dev-dependencies]
-tempfile = "3.10.0"
+tempfile = "3.12.0"
 
 [lints.rust]
 unsafe_code = "forbid"
 
 [lints.clippy]
-perf = "warn"
-pedantic = "warn"
+perf = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
 case_sensitive_file_extension_comparisons = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"

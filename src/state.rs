@@ -7,7 +7,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use crate::json_format;
 use crate::timeutils::unix_time;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -58,7 +57,7 @@ impl State {
             (),
         )?;
         self.conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS Cache_key ON Cache(key)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS Cache_key_raw ON Cache(key, raw)",
             (),
         )?;
         self.conn.pragma_update(None, "synchronous", "NORMAL")?;
@@ -76,7 +75,7 @@ impl State {
     pub fn get(&self, key: &str) -> Result<Option<StateValue>> {
         let mut statement = self
             .conn
-            .prepare_cached("SELECT value FROM Cache WHERE key = :key")?;
+            .prepare_cached("SELECT value FROM Cache WHERE key = :key and raw = 1")?;
         let mut rows = statement.query_map(named_params! {":key": key}, |row| {
             let value: String = row.get("value")?;
             let state_value: StateValue = serde_json::from_str(&value).unwrap();
@@ -101,7 +100,10 @@ impl State {
             }
 
             let params = repeat_n("?", vector.len()).join(", ");
-            let query = "SELECT key, value from Cache WHERE key in (".to_owned() + &params + ")";
+            let query = "SELECT key, value from Cache WHERE key in (".to_owned()
+                + &params
+                + ")"
+                + " and raw = 1";
             let mut statement = self.conn.prepare_cached(&query)?;
 
             let mut rows = statement.query(&*vector)?;
@@ -120,10 +122,11 @@ impl State {
         let mut statement = self.conn.prepare_cached(
             "INSERT OR REPLACE INTO Cache(
             key, raw, store_time, expire_time, access_time, tag, mode, filename, value)
-            VALUES (:key, :raw, :store_time, :expire_time, :access_time, :tag, :mode, :filename, :value)",
+            VALUES (:key, :raw, :store_time, :expire_time, :access_time, :tag, :mode, :filename, :value)
+            ON CONFLICT(key, raw) DO UPDATE SET value = excluded.value"
         )?;
         let time = unix_time(SystemTime::now()).unwrap();
-        let value = json_format::to_string(&value).unwrap();
+        let value = serde_json::to_string(&value).unwrap();
         statement.execute(named_params! {
             ":key": key,
             ":raw": 1,
@@ -150,7 +153,7 @@ impl State {
             let mut params = Vec::with_capacity(chunk.len() * 4);
             let mut vector = Vec::with_capacity(chunk.len());
             for (key, value) in &chunk {
-                let value = json_format::to_string(&value).unwrap();
+                let value = serde_json::to_string(&value).unwrap();
                 vector.push((key, time, value));
             }
             for batch in &vector {
@@ -185,4 +188,5 @@ pub fn prepare_insert(batch_size: usize) -> String {
     VALUES "
         .to_owned()
         + &params
+        + " ON CONFLICT(key, raw) DO UPDATE SET value = excluded.value"
 }
