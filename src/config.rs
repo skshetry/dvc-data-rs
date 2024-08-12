@@ -3,6 +3,9 @@ use config::{Config as Conf, ConfigError, File};
 use directories::ProjectDirs;
 use serde::{de, Deserialize};
 use serde_json::Value;
+use serde_with::formats::CommaSeparator;
+use serde_with::serde_as;
+use serde_with::StringWithSeparator;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize, Default)]
@@ -15,12 +18,14 @@ pub struct Core {
     pub checksum_jobs: Option<usize>,
 }
 
+#[serde_as]
 #[derive(Debug, Deserialize, Default)]
 pub struct Cache {
     #[serde(default)]
     pub dir: Option<PathBuf>,
     #[serde(rename = "type", default)]
-    pub typ: Option<String>,
+    #[serde_as(as = "Option<StringWithSeparator::<CommaSeparator, String>>")]
+    pub typ: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]

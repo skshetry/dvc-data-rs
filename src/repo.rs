@@ -39,8 +39,8 @@ fn btime(tmp_dir: &Path) -> Result<f64, io::Error> {
     }
 }
 
-fn db_dirname(root: &Path, tmp_dir: &Path) -> String {
-    let btime = btime(tmp_dir).unwrap();
+fn db_dirname(root: &Path, tmp_dir: &Path) -> Result<String, io::Error> {
+    let btime = btime(tmp_dir)?;
     let user = whoami::username();
     let dvc_major = 3;
     let salt = 0;
@@ -58,7 +58,7 @@ fn db_dirname(root: &Path, tmp_dir: &Path) -> String {
     st.push(salt.to_string());
     st.push(")");
 
-    md5(&mut st.as_encoded_bytes())
+    Ok(md5(&mut st.as_encoded_bytes()))
 }
 
 #[cfg(not(any(
@@ -95,7 +95,7 @@ impl Repo {
 
         let db_dir = match &config.core.site_cache_dir {
             Some(v) => v.clone(),
-            None => db_dirs().join(db_dirname(&root, &tmp_dir)),
+            None => db_dirs().join(db_dirname(&root, &tmp_dir)?),
         };
         let object_dir = match &config.cache.dir {
             Some(v) => v.clone(),
@@ -115,7 +115,7 @@ impl Repo {
 
     pub fn discover(path: Option<PathBuf>) -> Result<Self, Box<dyn Error>> {
         let path = path.unwrap_or(env::current_dir()?);
-        let path = fs::canonicalize(path).unwrap();
+        let path = fs::canonicalize(path)?;
         for directory in path.ancestors() {
             if directory.join(".dvc").is_dir() {
                 return Self::open(Some(directory.to_path_buf()));

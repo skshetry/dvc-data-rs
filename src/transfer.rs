@@ -6,44 +6,52 @@ use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub fn transfer_obj(root: &Path, from: &PathBuf, oid: &str) {
+pub fn transfer_obj(root: &Path, from: &PathBuf, oid: &str) -> std::io::Result<()> {
     let to = oid_to_path(root, oid);
     if to.exists() {
-        return;
+        return Ok(());
     }
-    transfer_file(from, &to);
+    transfer_file(from, &to)?;
     protect_file(&to);
+    Ok(())
 }
 
-pub fn write_obj(root: &Path, oid: &str, contents: &str) {
+pub fn write_obj(root: &Path, oid: &str, contents: &str) -> std::io::Result<()> {
     let to = oid_to_path(root, oid);
     if to.exists() {
-        return;
+        return Ok(());
     }
-    fs::create_dir_all(to.parent().unwrap()).unwrap();
-    fs::write(to.clone(), contents).unwrap();
+    if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(to.clone(), contents)?;
     protect_file(&to);
+    Ok(())
 }
 
-pub fn transfer_tree(odb: &Odb, wroot: &Path, tree: &Tree) -> String {
+pub fn transfer_tree(odb: &Odb, wroot: &Path, tree: &Tree) -> std::io::Result<String> {
     let pb = ProgressBar::new(tree.entries.len() as u64);
-    fs::create_dir_all(&odb.path).unwrap();
-    tree.entries.par_iter().progress_with(pb).for_each(|entry| {
-        let file = wroot.join(&entry.relpath);
-        transfer_obj(&odb.path, &file, &entry.oid);
-    });
+    fs::create_dir_all(&odb.path)?;
+    tree.entries
+        .par_iter()
+        .progress_with(pb)
+        .try_for_each(|entry| {
+            let file = wroot.join(&entry.relpath);
+            transfer_obj(&odb.path, &file, &entry.oid)?;
+            std::io::Result::Ok(())
+        })?;
 
     let (serialized, oid) = tree.digest().unwrap();
-    write_obj(&odb.path, &oid, &serialized);
-    oid
+    write_obj(&odb.path, &oid, &serialized)?;
+    Ok(oid)
 }
 
-pub fn transfer(odb: &Odb, wroot: &PathBuf, obj: &Object) -> String {
+pub fn transfer(odb: &Odb, wroot: &PathBuf, obj: &Object) -> std::io::Result<String> {
     match obj {
         Object::HashFile(hf) => {
-            transfer_obj(&odb.path, wroot, hf);
-            hf.to_string()
+            transfer_obj(&odb.path, wroot, hf)?;
+            Ok(hf.to_string())
         }
-        Object::Tree(t) => transfer_tree(odb, wroot, t),
+        Object::Tree(t) => Ok(transfer_tree(odb, wroot, t)?),
     }
 }

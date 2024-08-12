@@ -21,13 +21,13 @@ pub use checkout::{checkout, checkout_obj};
 pub use models::{DvcFile, Output};
 pub use objects::{Object, Tree};
 
+use rayon::ThreadPoolBuildError;
 pub use transfer::transfer;
 
-pub fn create_pool(num: Option<usize>) -> usize {
+pub fn create_pool(num: Option<usize>) -> Result<usize, ThreadPoolBuildError> {
     let threads = num.unwrap_or_else(num_cpus::get_physical);
     rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
-        .build_global()
-        .unwrap();
-    threads
+        .build_global()?;
+    Ok(threads)
 }

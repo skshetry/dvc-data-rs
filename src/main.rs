@@ -79,12 +79,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             no_state,
         } => {
             let repo = Repo::discover(None)?;
-            let threads = create_pool(jobs.or(repo.config.core.checksum_jobs));
+            let threads = create_pool(jobs.or(repo.config.core.checksum_jobs))?;
             let state = if no_state { None } else { Some(&repo.state) };
             eprintln!("    {} files", style("Staging").green().bold());
 
             let abspath = fs::canonicalize(path.clone())?;
-            let ignore = get_ignore(&repo.root, abspath.parent().unwrap());
+            let ignore = get_ignore(&repo.root, abspath.parent().unwrap())?;
             let (obj, size) = build(&repo.odb, &path, state, &ignore, threads);
 
             match &obj {
@@ -94,7 +94,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             let oid = if write {
                 eprintln!("    {} files", style("Transferring").green().bold());
-                transfer(&repo.odb, &path, &obj)
+                transfer(&repo.odb, &path, &obj)?
             } else {
                 match obj {
                     Object::Tree(t) => t.digest()?.1,
@@ -108,15 +108,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         Commands::Add { path, no_state } => {
             let repo = Repo::discover(None)?;
             let state = if no_state { None } else { Some(&repo.state) };
-            let threads = create_pool(repo.config.core.checksum_jobs);
+            let threads = create_pool(repo.config.core.checksum_jobs)?;
             eprintln!("    {} files", style("Staging").green().bold());
 
             let abspath = fs::canonicalize(path.clone())?;
-            let ignore = get_ignore(&repo.root, abspath.parent().unwrap());
+            let ignore = get_ignore(&repo.root, abspath.parent().unwrap())?;
             let (obj, size) = build(&repo.odb, &path, state, &ignore, threads);
             eprintln!("    {} files", style("Transferring").green().bold());
 
-            let oid = transfer(&repo.odb, &path, &obj);
+            let oid = transfer(&repo.odb, &path, &obj)?;
             let filename: String = path.file_name().unwrap().to_str().unwrap().into();
             let dvcfile = path.with_file_name(format!("{filename}.dvc"));
             eprintln!(
@@ -128,7 +128,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Object::Tree(t) => Some(t.entries.len()),
                 Object::HashFile(_) => None,
             };
-            DvcFile::create(&dvcfile, path.as_path(), oid, Some(size), nfiles);
+            DvcFile::create(&dvcfile, path.as_path(), oid, Some(size), nfiles)?;
 
             if !repo.config.core.no_scm {
                 let mut ignorelst = ignorelist::IgnoreList { ignore: Vec::new() };
@@ -142,18 +142,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         Commands::CheckoutObject { oid, path } => {
             let repo = Repo::discover(None)?;
-            if repo.config.cache.typ.is_some() {
-                eprintln!("link type other than 'reflink,copy' is unsupported.");
-            }
-            checkout_obj(&repo.odb, &oid, &path);
+            checkout_obj(&repo.odb, &oid, &path, &repo.config.cache.typ)?;
             Ok(())
         }
         Commands::Checkout { path } => {
             let repo = Repo::discover(None)?;
-            if repo.config.cache.typ.is_some() {
-                eprintln!("link type other than 'reflink,copy' is unsupported.");
-            }
-            checkout(&repo.odb, &path);
+            checkout(&repo.odb, &path, &repo.config.cache.typ)?;
             Ok(())
         }
         Commands::Diff { old, new } => {
@@ -194,11 +188,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         Commands::Status { path } => {
             let repo = Repo::discover(None)?;
-            let threads = create_pool(repo.config.core.checksum_jobs);
+            let threads = create_pool(repo.config.core.checksum_jobs)?;
             let state = Some(&repo.state);
 
             let abspath = fs::canonicalize(path.clone())?;
-            let ignore = get_ignore(&repo.root, abspath.parent().unwrap());
+            let ignore = get_ignore(&repo.root, abspath.parent().unwrap())?;
 
             let diff = match Repository::discover(repo.root) {
                 Ok(git_repo) => status_git(&git_repo, &repo.odb, &path),

@@ -1,5 +1,4 @@
 use crate::hash::md5;
-use core::panic;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -12,7 +11,9 @@ pub fn compute_checksum(ut: f64, ino: u128, size: u64) -> String {
         + &size.to_string()
         + "],)";
     let hash = md5(&mut st.as_bytes());
-    u128::from_str_radix(&hash, 16).unwrap().to_string()
+    u128::from_str_radix(&hash, 16)
+        .expect("expected a valid u128 from md5 hash")
+        .to_string()
 }
 
 #[cfg(unix)]
@@ -27,10 +28,12 @@ pub fn size_from_meta(meta: &fs::Metadata) -> u64 {
     meta.file_size()
 }
 
-pub fn transfer_file(from: &PathBuf, to: &PathBuf) {
-    fs::create_dir_all(to.parent().unwrap()).unwrap();
-    reflink_copy::reflink_or_copy(from, to)
-        .unwrap_or_else(|_| panic!("transfer failed: {from:?} {to:?}"));
+pub fn transfer_file(from: &PathBuf, to: &PathBuf) -> std::io::Result<()> {
+    if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    reflink_copy::reflink_or_copy(from, to).map(|_| ())?;
+    Ok(())
 }
 
 pub fn protect_file(path: &Path) {

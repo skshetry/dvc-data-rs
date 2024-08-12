@@ -22,10 +22,10 @@ pub fn test_build() {
 
     let repo = t!(Repo::open(Some(dir.path().to_path_buf())));
     let state = Some(&repo.state);
-    let threads = create_pool(None);
+    let threads = create_pool(None).unwrap();
 
     let abspath = t!(fs::canonicalize(dir.path()));
-    let ignore = get_ignore(&repo.root, abspath.parent().unwrap());
+    let ignore = get_ignore(&repo.root, abspath.parent().unwrap()).unwrap();
     let (obj, size) = build(&repo.odb, dir.path(), state, &ignore, threads);
     assert_eq!(size, 10);
 

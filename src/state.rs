@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
+use thiserror::Error;
 
 use crate::timeutils::unix_time;
 
@@ -29,13 +30,23 @@ pub struct State {
     conn: Connection,
 }
 
+#[derive(Error, Debug)]
+pub enum StateOpenError {
+    #[error("failed to create directory for state file")]
+    FailedToCreateDirectory(#[from] std::io::Error),
+    #[error("failed to open state db")]
+    SQLiteError(#[from] rusqlite::Error),
+}
+
 impl State {
-    pub fn open(path: &PathBuf) -> Result<Self> {
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        Self {
+    pub fn open(path: &PathBuf) -> Result<Self, StateOpenError> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        Ok(Self {
             conn: Connection::open(path)?,
         }
-        .instantiate()
+        .instantiate()?)
     }
 
     pub fn instantiate(self) -> Result<Self> {

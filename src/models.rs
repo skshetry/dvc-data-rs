@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Output {
@@ -19,6 +20,14 @@ pub struct DvcFile {
     pub outs: (Output,),
 }
 
+#[derive(Error, Debug)]
+pub enum DvcFileCreateError {
+    #[error("failed to validate contents")]
+    InvalidFormat(#[from] serde_yaml::Error),
+    #[error("failed to write")]
+    FailedToWrite(#[from] std::io::Error),
+}
+
 impl DvcFile {
     pub fn create(
         dvcfile: &PathBuf,
@@ -26,7 +35,7 @@ impl DvcFile {
         oid: String,
         size: Option<u64>,
         nfiles: Option<usize>,
-    ) {
+    ) -> Result<(), DvcFileCreateError> {
         let output = Output {
             oid,
             size,
@@ -35,11 +44,11 @@ impl DvcFile {
             path: path.to_path_buf(),
         };
         let dvcfile_obj = Self { outs: (output,) };
-        let contents = serde_yaml::to_string(&dvcfile_obj).unwrap();
+        let contents = serde_yaml::to_string(&dvcfile_obj)?;
         let processed = contents
             .strip_prefix("---")
             .unwrap_or(&contents)
             .trim_start();
-        fs::write(dvcfile, processed).unwrap();
+        Ok(fs::write(dvcfile, processed)?)
     }
 }
