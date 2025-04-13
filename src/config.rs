@@ -1,11 +1,11 @@
 use config::FileFormat;
 use config::{Config as Conf, ConfigError, File};
 use directories::ProjectDirs;
-use serde::{de, Deserialize};
+use serde::{Deserialize, de};
 use serde_json::Value;
+use serde_with::StringWithSeparator;
 use serde_with::formats::CommaSeparator;
 use serde_with::serde_as;
-use serde_with::StringWithSeparator;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize, Default)]

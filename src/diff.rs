@@ -1,5 +1,5 @@
 use crate::objects::{Object, Tree};
-use crate::odb::{oid_to_path, Odb};
+use crate::odb::{Odb, oid_to_path};
 use std::{collections::HashMap, path::Path, path::PathBuf};
 
 #[derive(Default, Debug)]

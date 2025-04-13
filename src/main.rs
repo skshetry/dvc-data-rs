@@ -4,7 +4,7 @@ use dvc_data::diff::Diff;
 use dvc_data::ignore::get_ignore;
 use dvc_data::repo::Repo;
 use dvc_data::status::{status, status_git};
-use dvc_data::{build, checkout, checkout_obj, create_pool, transfer, DvcFile, Object};
+use dvc_data::{DvcFile, Object, build, checkout, checkout_obj, create_pool, transfer};
 use dvc_data::{diff, ignorelist};
 use env_logger::Env;
 use git2::Repository;
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     if let Some(dir) = args.cd {
         set_current_dir(dir)?;
     }
-    return match args.command {
+    match args.command {
         Commands::Build {
             path,
             write,
@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             match &obj {
                 Object::Tree(t) => debug!("size: {}, nfiles: {}", size, t.entries.len()),
-                Object::HashFile(_) => debug!("size: {}", size),
+                Object::HashFile(_) => debug!("size: {size}"),
             }
 
             let oid = if write {
@@ -183,7 +183,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
                 diff::State::Removed => println!("removed: {ROOT} ({old})"),
                 diff::State::Unchanged => (),
-            };
+            }
             Ok(())
         }
         Commands::Status { path } => {
@@ -197,7 +197,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let diff = match Repository::discover(repo.root) {
                 Ok(git_repo) => status_git(&git_repo, &repo.odb, &path),
                 Err(e) => {
-                    debug!("{}", e);
+                    debug!("{e}");
                     Diff::default()
                 }
             };
@@ -239,5 +239,5 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             Ok(())
         }
-    };
+    }
 }

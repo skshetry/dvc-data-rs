@@ -1,6 +1,6 @@
-use itertools::{repeat_n, Itertools};
+use itertools::{Itertools, repeat_n};
 use rusqlite::ToSql;
-use rusqlite::{named_params, types::Null, Connection, Result};
+use rusqlite::{Connection, Result, named_params, types::Null};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -187,7 +187,7 @@ impl State {
         let mut rows = statement.query(())?;
         Ok(rows
             .next()?
-            .map_or(true, |v| v.get::<usize, usize>(0).unwrap() == 0))
+            .is_none_or(|v| v.get::<usize, usize>(0).unwrap() == 0))
     }
 }
 

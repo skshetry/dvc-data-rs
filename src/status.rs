@@ -1,7 +1,7 @@
 use crate::build::build;
-use crate::diff::{diff_object, diff_root, Diff};
+use crate::diff::{Diff, diff_object, diff_root};
 use crate::models::{DvcFile, Output};
-use crate::odb::{oid_to_path, Odb};
+use crate::odb::{Odb, oid_to_path};
 use crate::state::State;
 use crate::{Object, Tree};
 use core::str;

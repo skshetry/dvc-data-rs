@@ -1,6 +1,6 @@
 use crate::fsutils::{protect_file, transfer_file};
 use crate::objects::{Object, Tree};
-use crate::odb::{oid_to_path, Odb};
+use crate::odb::{Odb, oid_to_path};
 use indicatif::{ParallelProgressIterator, ProgressBar};
 use rayon::prelude::*;
 use std::fs;

@@ -1,5 +1,5 @@
-use dvc_data::objects::TreeEntry;
 use dvc_data::Tree;
+use dvc_data::objects::TreeEntry;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::tempdir;

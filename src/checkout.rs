@@ -1,7 +1,7 @@
 use crate::fsutils::transfer_file;
 use crate::models::{DvcFile, Output};
 use crate::objects::Tree;
-use crate::odb::{oid_to_path, Odb};
+use crate::odb::{Odb, oid_to_path};
 use indicatif::{ParallelProgressIterator, ProgressBar};
 use rayon::prelude::*;
 use std::fs;
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 fn checkout_file(
     from: &PathBuf,
     to: &PathBuf,
-    cache_types: &Option<Vec<String>>,
+    cache_types: Option<&Vec<String>>,
 ) -> std::io::Result<()> {
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
@@ -74,12 +74,12 @@ pub fn checkout_obj(
             .try_for_each(|entry| {
                 let src = oid_to_path(&odb.path, &entry.oid);
                 let dst = to.join(&entry.relpath);
-                checkout_file(&src, &dst, cache_types)?;
+                checkout_file(&src, &dst, cache_types.as_ref())?;
                 std::io::Result::Ok(())
             })?;
         return Ok(());
     }
-    checkout_file(&from, to, cache_types)
+    checkout_file(&from, to, cache_types.as_ref())
 }
 
 pub fn checkout(

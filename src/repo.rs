@@ -88,7 +88,7 @@ impl Repo {
         let control_dir = root.join(".dvc");
 
         let config = Config::new(&control_dir)?;
-        debug!("{:?}", config);
+        debug!("{config:?}");
 
         let tmp_dir = control_dir.join("tmp");
         fs::create_dir_all(&tmp_dir)?;
@@ -109,7 +109,7 @@ impl Repo {
             state: State::open(&state_path)?.instantiate()?,
             config,
         };
-        debug!("{:?}", repo);
+        debug!("{repo:?}");
         Ok(repo)
     }
 

@@ -1,7 +1,7 @@
+use dvc_data::Object::Tree;
 use dvc_data::ignore::get_ignore;
 use dvc_data::objects::TreeEntry;
 use dvc_data::repo::Repo;
-use dvc_data::Object::Tree;
 use dvc_data::{build, create_pool};
 use std::fs;
 use std::path::PathBuf;

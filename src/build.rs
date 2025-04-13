@@ -30,7 +30,7 @@ impl FileInfo {
 
             #[cfg(windows)]
             {
-                use file_id::{get_file_id, FileId};
+                use file_id::{FileId, get_file_id};
                 match get_file_id(path).unwrap() {
                     FileId::LowRes {
                         volume_serial_number: _,
@@ -129,7 +129,7 @@ fn set_hashes<'a>(
     }
 }
 
-fn _build_file(root: &PathBuf, state: Option<&State>) -> (Object, u64) {
+fn build_file(root: &PathBuf, state: Option<&State>) -> (Object, u64) {
     let file_info = FileInfo::from_metadata(root, &fs::metadata(root).unwrap());
     let state_value: Option<StateValue> = match state {
         None => None,
@@ -159,7 +159,7 @@ fn _build_file(root: &PathBuf, state: Option<&State>) -> (Object, u64) {
             };
             if let Some(s) = state {
                 s.set(root.to_str().unwrap(), &sv).unwrap();
-            };
+            }
             oid
         }
         Some(st) => st.hash_info.oid,
@@ -184,7 +184,7 @@ pub fn build(
     );
 
     if root.is_file() {
-        return _build_file(&root, state);
+        return build_file(&root, state);
     }
 
     let walk_start = Instant::now();
