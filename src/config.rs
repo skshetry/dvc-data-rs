@@ -1,5 +1,5 @@
 use config::FileFormat;
-use config::{Config as Conf, ConfigError, File};
+use config::{Config as Conf, File};
 use directories::ProjectDirs;
 use serde::{Deserialize, de};
 use serde_json::Value;
@@ -7,6 +7,17 @@ use serde_with::StringWithSeparator;
 use serde_with::formats::CommaSeparator;
 use serde_with::serde_as;
 use std::path::{Path, PathBuf};
+use thiserror::Error as ThisError;
+
+#[derive(Debug, ThisError)]
+pub enum ConfigError {
+    #[error(transparent)]
+    ConfigError(#[from] config::ConfigError),
+    #[error("failed to determine home directory")]
+    FailedToGetNoHomeDir,
+    #[error(transparent)]
+    SerdeError(#[from] serde::de::value::Error),
+}
 
 #[derive(Debug, Deserialize, Default)]
 pub struct Core {
@@ -55,11 +66,11 @@ where
 
 impl Config {
     pub fn new(control_dir: &Path) -> Result<Self, ConfigError> {
-        Conf::builder()
+        let conf = Conf::builder()
             .add_source(
                 File::from(
                     ProjectDirs::from("", "iterative", "dvc")
-                        .unwrap()
+                        .ok_or_else(|| ConfigError::FailedToGetNoHomeDir)?
                         .config_local_dir()
                         .join("config"),
                 )
@@ -77,6 +88,7 @@ impl Config {
                     .format(FileFormat::Ini),
             )
             .build()?
-            .try_deserialize()
+            .try_deserialize()?;
+        Ok(conf)
     }
 }

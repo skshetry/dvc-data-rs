@@ -1,17 +1,39 @@
-use crate::build::build;
+use crate::Object;
+use crate::build::{BuildError, build};
 use crate::diff::{Diff, diff_object, diff_root};
-use crate::models::{DvcFile, Output};
-use crate::odb::{Odb, oid_to_path};
+use crate::models::{DvcFile, Output, absolute_output_path};
+use crate::objects::TreeError;
+use crate::odb::Odb;
 use crate::state::State;
-use crate::{Object, Tree};
+use camino::{Utf8Path, Utf8PathBuf};
 use core::str;
-use git2;
 use ignore::gitignore::Gitignore;
 use std::path::Path;
 use std::path::PathBuf;
 use std::{env, fs};
+use thiserror::Error as ThisError;
 
-pub fn diff_obj(root: &Path, old: Option<Object>, new: Option<Object>) -> Diff {
+#[derive(Debug, ThisError)]
+pub enum StatusError {
+    #[error(transparent)]
+    BuildError(#[from] BuildError),
+    #[error(transparent)]
+    FromPathError(#[from] camino::FromPathError),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    SerdeYaml(#[from] serde_yaml::Error),
+    #[error(transparent)]
+    SerdeJson(#[from] serde_json::Error),
+    #[error(transparent)]
+    TreeError(#[from] TreeError),
+    #[error(transparent)]
+    StripPrefixError(#[from] std::path::StripPrefixError),
+    #[error("Bare git repository found at {0}")]
+    BareGitRepo(PathBuf),
+}
+
+pub fn diff_obj(root: &Utf8Path, old: Option<Object>, new: Option<Object>) -> Diff {
     let mut diff = Diff::default();
     let granular_diff = diff_object(old, new);
 
@@ -30,7 +52,7 @@ pub fn diff_obj(root: &Path, old: Option<Object>, new: Option<Object>) -> Diff {
     diff
 }
 
-pub fn get_tree_obj(git_repo: &git2::Repository) -> Option<git2::Tree> {
+pub fn get_tree_obj(git_repo: &git2::Repository) -> Option<git2::Tree<'_>> {
     git_repo.head().map_or(None, |r| {
         let tree_id = r.peel_to_commit().expect("commit").tree_id();
         Some(git_repo.find_tree(tree_id).expect("expected tree"))
@@ -41,33 +63,39 @@ pub fn get_oid_for_path(tree: &git2::Tree, path: &Path) -> git2::Oid {
     tree.get_path(path).expect("tree entry for file").id()
 }
 
-pub fn status_git(git_repo: &git2::Repository, odb: &Odb, dvcfile_path: &PathBuf) -> Diff {
+pub fn status_git(
+    git_repo: &git2::Repository,
+    odb: &Odb,
+    dvcfile_path: &Utf8PathBuf,
+) -> Result<Diff, StatusError> {
     let tree = get_tree_obj(git_repo);
-    let dvcfile_relpath = env::current_dir()
-        .unwrap()
-        .strip_prefix(git_repo.workdir().unwrap())
-        .unwrap()
+    let dvcfile_relpath = env::current_dir()?
+        .strip_prefix(
+            git_repo
+                .workdir()
+                .ok_or_else(|| StatusError::BareGitRepo(git_repo.path().to_path_buf()))?,
+        )?
         .join(dvcfile_path);
     let oid = match tree {
         Some(t) => get_oid_for_path(&t, &dvcfile_relpath),
         None => {
-            return Diff::default();
+            return Ok(Diff::default());
         }
     };
 
     let Ok(git_odb) = git_repo.odb() else {
-        return Diff::default();
+        return Ok(Diff::default());
     };
     let git_obj = git_odb.read(oid).expect("object with oid");
     let data = git_obj.data();
 
     let contents = str::from_utf8(data).expect("Invalid utf8 sequence");
 
-    let dvcfile_obj: DvcFile = serde_yaml::from_str(contents).unwrap();
+    let dvcfile_obj: DvcFile = serde_yaml::from_str(contents)?;
     let old_out = dvcfile_obj.outs.0;
 
-    let contents = &fs::read_to_string(dvcfile_path).unwrap();
-    let dvcfile_obj: DvcFile = serde_yaml::from_str(contents).unwrap();
+    let contents = &fs::read_to_string(dvcfile_path)?;
+    let dvcfile_obj: DvcFile = serde_yaml::from_str(contents)?;
     let new_out = dvcfile_obj.outs.0;
 
     let new_oid = new_out.oid;
@@ -75,25 +103,14 @@ pub fn status_git(git_repo: &git2::Repository, odb: &Odb, dvcfile_path: &PathBuf
 
     assert!(new_out.path == old_out.path);
 
-    let old_obj = if old_oid.ends_with(".dir") {
-        let obj_path = oid_to_path(&odb.path, &old_oid);
-        let tree = Tree::load_from(&obj_path).unwrap();
-        Object::Tree(tree)
-    } else {
-        Object::HashFile(old_oid.clone())
+    let old_obj = odb.load_object(&old_oid)?;
+    let new_obj = odb.load_object(&new_oid)?;
+    let path = match dvcfile_path.parent() {
+        Some(p) => p.join(new_out.path),
+        None => new_out.path,
     };
-
-    let new_obj = if new_oid.ends_with(".dir") {
-        let obj_path = oid_to_path(&odb.path, &new_oid);
-        let tree = Tree::load_from(&obj_path).unwrap();
-        Object::Tree(tree)
-    } else {
-        Object::HashFile(new_oid.clone())
-    };
-
-    let path = dvcfile_path.parent().unwrap().join(new_out.path);
     let diff = diff_obj(&path, Some(old_obj), Some(new_obj));
-    diff.merge(diff_root(&path, Some(&old_oid), Some(&new_oid)))
+    Ok(diff.merge(diff_root(&path, Some(&old_oid), Some(&new_oid))))
 }
 
 pub fn status(
@@ -101,26 +118,20 @@ pub fn status(
     state: Option<&State>,
     ignore: &Gitignore,
     jobs: usize,
-    dvcfile_path: &PathBuf,
-) -> Diff {
-    let contents = &fs::read_to_string(dvcfile_path).unwrap();
-    let dvcfile_obj: DvcFile = serde_yaml::from_str(contents).unwrap();
+    dvcfile_path: &Utf8PathBuf,
+) -> Result<Diff, StatusError> {
+    let contents = &fs::read_to_string(dvcfile_path)?;
+    let dvcfile_obj: DvcFile = serde_yaml::from_str(contents)?;
     let Output { oid, path, .. } = dvcfile_obj.outs.0;
 
-    let (obj, _) = build(odb, &path, state, ignore, jobs);
-
-    let old_obj = if oid.ends_with(".dir") {
-        let obj_path = oid_to_path(&odb.path, &oid);
-        let tree = Tree::load_from(&obj_path).unwrap();
-        Object::Tree(tree)
-    } else {
-        Object::HashFile(oid.clone())
-    };
-
+    let path = absolute_output_path(dvcfile_path, &path);
+    let (obj, _) = build(odb, &path, state, ignore, jobs)?;
     let obj_oid = match obj {
-        Object::Tree(ref t) => t.digest().unwrap().1,
-        Object::HashFile(ref o) => o.to_string(),
+        Object::Tree(ref t) => t.digest()?.1,
+        Object::HashFile(ref o) => o.clone(),
     };
+
+    let old_obj = odb.load_object(&oid)?;
     let diff = diff_obj(&path, Some(old_obj), Some(obj));
-    diff.merge(diff_root(&path, Some(&oid), Some(&obj_oid)))
+    Ok(diff.merge(diff_root(&path, Some(&oid), Some(&obj_oid))))
 }

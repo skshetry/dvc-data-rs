@@ -1,7 +1,9 @@
+use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
 use console::style;
 use dvc_data::diff::Diff;
 use dvc_data::ignore::get_ignore;
+use dvc_data::models::{default_dvcfile_path, path_relative_to_dvcfile};
 use dvc_data::repo::Repo;
 use dvc_data::status::{status, status_git};
 use dvc_data::{DvcFile, Object, build, checkout, checkout_obj, create_pool, transfer};
@@ -11,7 +13,6 @@ use git2::Repository;
 use log::debug;
 use std::env::set_current_dir;
 use std::error::Error;
-use std::fs;
 use std::path::PathBuf;
 use std::str;
 
@@ -23,17 +24,17 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     verbose: bool,
 
-    #[arg(long)]
+    #[arg(long, global = true)]
     cd: Option<PathBuf>,
 }
 
 #[derive(Subcommand, Debug)]
 enum Commands {
     Build {
-        path: PathBuf,
+        path: Utf8PathBuf,
         #[arg(short, long)]
         write: bool,
         #[arg(short, long)]
@@ -42,23 +43,23 @@ enum Commands {
         no_state: bool,
     },
     Add {
-        path: PathBuf,
+        path: Utf8PathBuf,
         #[arg(long)]
         no_state: bool,
     },
     CheckoutObject {
         oid: String,
-        path: PathBuf,
+        path: Utf8PathBuf,
     },
     Checkout {
-        path: PathBuf,
+        path: Utf8PathBuf,
     },
     Diff {
         old: String,
         new: Option<String>,
     },
     Status {
-        path: PathBuf,
+        path: Utf8PathBuf,
     },
 }
 
@@ -83,9 +84,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             let state = if no_state { None } else { Some(&repo.state) };
             eprintln!("    {} files", style("Staging").green().bold());
 
-            let abspath = fs::canonicalize(path.clone())?;
-            let ignore = get_ignore(&repo.root, abspath.parent().unwrap())?;
-            let (obj, size) = build(&repo.odb, &path, state, &ignore, threads);
+            let abspath = camino::absolute_utf8(&path)?;
+            let ignore = get_ignore(
+                &repo.root,
+                abspath
+                    .parent()
+                    .expect("failed to determine parent directory")
+                    .as_std_path(),
+            )?;
+            let (obj, size) = build(&repo.odb, &abspath, state, &ignore, threads)?;
 
             match &obj {
                 Object::Tree(t) => debug!("size: {}, nfiles: {}", size, t.entries.len()),
@@ -94,7 +101,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             let oid = if write {
                 eprintln!("    {} files", style("Transferring").green().bold());
-                transfer(&repo.odb, &path, &obj)?
+                transfer(&repo.odb, abspath.as_std_path(), &obj)?
             } else {
                 match obj {
                     Object::Tree(t) => t.digest()?.1,
@@ -111,32 +118,39 @@ fn main() -> Result<(), Box<dyn Error>> {
             let threads = create_pool(repo.config.core.checksum_jobs)?;
             eprintln!("    {} files", style("Staging").green().bold());
 
-            let abspath = fs::canonicalize(path.clone())?;
-            let ignore = get_ignore(&repo.root, abspath.parent().unwrap())?;
-            let (obj, size) = build(&repo.odb, &path, state, &ignore, threads);
+            let abspath = camino::absolute_utf8(&path)?;
+            let ignore = get_ignore(
+                &repo.root,
+                abspath
+                    .parent()
+                    .expect("failed to determine parent directory")
+                    .as_std_path(),
+            )?;
+            let (obj, size) = build(&repo.odb, &abspath, state, &ignore, threads)?;
             eprintln!("    {} files", style("Transferring").green().bold());
 
-            let oid = transfer(&repo.odb, &path, &obj)?;
-            let filename: String = path.file_name().unwrap().to_str().unwrap().into();
-            let dvcfile = path.with_file_name(format!("{filename}.dvc"));
-            eprintln!(
-                "    {} {}",
-                style("Created").green().bold(),
-                dvcfile.to_str().unwrap()
-            );
+            let oid = transfer(&repo.odb, abspath.as_std_path(), &obj)?;
             let nfiles = match obj {
                 Object::Tree(t) => Some(t.entries.len()),
                 Object::HashFile(_) => None,
             };
-            DvcFile::create(&dvcfile, path.as_path(), oid, Some(size), nfiles)?;
+            let dvcfile = default_dvcfile_path(&abspath);
+            let out_path = path_relative_to_dvcfile(&dvcfile, &abspath)?;
+            DvcFile::create(dvcfile.as_std_path(), &out_path, oid, Some(size), nfiles)?;
+            eprintln!(
+                "    {} {}",
+                style("Created").green().bold(),
+                dvcfile.as_str()
+            );
 
             if !repo.config.core.no_scm {
                 let mut ignorelst = ignorelist::IgnoreList { ignore: Vec::new() };
-                ignorelst
-                    .ignore
-                    .push(format!("/{}", path.file_name().unwrap().to_str().unwrap()));
+                ignorelst.ignore.push(format!(
+                    "/{}",
+                    abspath.file_name().expect("expected to have filename")
+                ));
                 let gitignore = path.with_file_name(".gitignore");
-                ignorelst.write(&gitignore);
+                ignorelst.write(&gitignore.into_std_path_buf())?;
             }
             Ok(())
         }
@@ -152,37 +166,31 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         Commands::Diff { old, new } => {
             let repo = Repo::discover(None)?;
-            let d = diff::diff_oid(&repo.odb, Some(&old), new.as_deref());
+            let d = diff::diff_oid(&repo.odb, Some(&old), new.as_deref())?;
 
             for (path, key) in d.added {
-                println!("added: {} ({})", path.to_string_lossy(), key);
+                println!("added: {} ({})", path.as_str(), key);
             }
             for (path, key) in d.removed {
-                println!("removed: {} ({})", path.to_string_lossy(), key);
+                println!("removed: {} ({})", path.as_str(), key);
             }
             for (path, (new, old)) in d.modified {
                 println!(
                     "modified: {} ({}) -> {} ({})",
-                    path.to_string_lossy(),
+                    path.as_str(),
                     old,
-                    path.to_string_lossy(),
+                    path.as_str(),
                     new
                 );
             }
 
             match diff::diff_root_oid(Some(&old), new.as_deref()) {
-                diff::State::Added => println!("added: {ROOT} ({old})"),
-                diff::State::Modified => {
-                    println!(
-                        "modified: {} ({}) -> {} ({})",
-                        ROOT,
-                        old,
-                        ROOT,
-                        new.unwrap()
-                    );
+                diff::State::Added(n) => println!("added: {ROOT} ({n})"),
+                diff::State::Modified(o, n) => {
+                    println!("modified: {ROOT} ({o}) -> {ROOT} ({n})");
                 }
-                diff::State::Removed => println!("removed: {ROOT} ({old})"),
-                diff::State::Unchanged => (),
+                diff::State::Removed(o) => println!("removed: {ROOT} ({o})"),
+                diff::State::Unchanged(_) => (),
             }
             Ok(())
         }
@@ -191,11 +199,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             let threads = create_pool(repo.config.core.checksum_jobs)?;
             let state = Some(&repo.state);
 
-            let abspath = fs::canonicalize(path.clone())?;
-            let ignore = get_ignore(&repo.root, abspath.parent().unwrap())?;
+            let abspath = camino::absolute_utf8(&path)?;
+            let ignore = get_ignore(
+                &repo.root,
+                abspath
+                    .parent()
+                    .expect("failed to determine parent directory")
+                    .as_std_path(),
+            )?;
 
             let diff = match Repository::discover(repo.root) {
-                Ok(git_repo) => status_git(&git_repo, &repo.odb, &path),
+                Ok(git_repo) => status_git(&git_repo, &repo.odb, &path)?,
                 Err(e) => {
                     debug!("{e}");
                     Diff::default()
@@ -204,36 +218,36 @@ fn main() -> Result<(), Box<dyn Error>> {
             let commit_diff = !diff.is_empty() && {
                 println!("DVC committed changes:");
                 for added in diff.added.keys() {
-                    let line = format!("{}: {}", "added", added.to_string_lossy());
+                    let line = format!("{}: {}", "added", added.as_str());
                     println!("\t{}", style(line).green());
                 }
                 for modified in diff.modified.keys() {
-                    let line = format!("{}: {}", "modified", modified.to_string_lossy());
+                    let line = format!("{}: {}", "modified", modified.as_str());
                     println!("\t{}", style(line).green());
                 }
                 for removed in diff.removed.keys() {
-                    let line = format!("{}: {}", "deleted", removed.to_string_lossy());
+                    let line = format!("{}: {}", "deleted", removed.as_str());
                     println!("\t{}", style(line).green());
                 }
                 true
             };
 
-            let diff = status(&repo.odb, state, &ignore, threads, &path);
+            let diff = status(&repo.odb, state, &ignore, threads, &path)?;
             if !diff.is_empty() {
                 if commit_diff {
                     println!();
                 }
                 println!("DVC uncommitted changes:");
                 for added in diff.added.keys() {
-                    let line = format!("{}: {}", "added", added.to_string_lossy());
+                    let line = format!("{}: {}", "added", added.as_str());
                     println!("\t{}", style(line).yellow());
                 }
                 for modified in diff.modified.keys() {
-                    let line = format!("{}: {}", "modified", modified.to_string_lossy());
+                    let line = format!("{}: {}", "modified", modified.as_str());
                     println!("\t{}", style(line).yellow());
                 }
                 for removed in diff.removed.keys() {
-                    let line = format!("{}: {}", "deleted", removed.to_string_lossy());
+                    let line = format!("{}: {}", "deleted", removed.as_str());
                     println!("\t{}", style(line).yellow());
                 }
             }

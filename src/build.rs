@@ -1,26 +1,57 @@
 use crate::fsutils::{compute_checksum, size_from_meta};
 use crate::hash::file_md5;
-use crate::objects::{Object, Tree, TreeEntry};
+use crate::objects::{Object, Oid, Tree, TreeEntry};
 use crate::odb::Odb;
-use crate::state::{State, StateHash, StateValue};
+use crate::state::{State, StateError, StateHash, StateValue};
 use crate::timeutils::unix_time;
+use camino::{FromPathBufError, FromPathError, Utf8Path, Utf8PathBuf};
 use ignore;
 use ignore::gitignore::Gitignore;
 use jwalk::{Parallelism, WalkDir};
 use log::debug;
 use rayon::prelude::*;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::StripPrefixError;
 use std::time::Instant;
 struct FileInfo {
     checksum: String,
-    path: PathBuf,
+    path: Utf8PathBuf,
     size: u64,
 }
 
+use thiserror::Error as ThisError;
+
+#[derive(Debug, ThisError)]
+pub enum BuildError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    WalkError(#[from] jwalk::Error),
+    #[error(transparent)]
+    StateError(#[from] StateError),
+    #[error(transparent)]
+    FromPathBufError(#[from] FromPathBufError),
+    #[error(transparent)]
+    FromPathError(#[from] FromPathError),
+    #[error(transparent)]
+    StripPrefixError(#[from] StripPrefixError),
+}
+
+#[inline]
+fn log_durations<F, R>(label: &str, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    let start = Instant::now();
+    let result = f();
+    let duration = start.elapsed();
+    debug!("{duration:?} in {label}");
+    result
+}
+
 impl FileInfo {
-    fn from_metadata(path: &Path, meta: &fs::Metadata) -> Self {
-        let ut = unix_time(meta.modified().unwrap()).unwrap();
+    fn from_metadata(path: &Utf8Path, meta: &fs::Metadata) -> Result<Self, std::io::Error> {
+        let ut = unix_time(meta.modified()?);
         let ino = {
             #[cfg(unix)]
             {
@@ -31,7 +62,7 @@ impl FileInfo {
             #[cfg(windows)]
             {
                 use file_id::{FileId, get_file_id};
-                match get_file_id(path).unwrap() {
+                match get_file_id(path)? {
                     FileId::LowRes {
                         volume_serial_number: _,
                         file_index,
@@ -49,209 +80,214 @@ impl FileInfo {
         };
         let size = size_from_meta(meta);
         let checksum = compute_checksum(ut, ino, size);
-        Self {
+        Ok(Self {
             checksum,
             size,
             path: path.to_path_buf(),
-        }
-    }
-
-    fn from_state(path: &Path, st: StateValue) -> Self {
-        Self {
-            checksum: st.checksum,
-            size: st.size,
-            path: path.to_path_buf(),
-        }
+        })
     }
 }
 
-fn get_hashes(
-    file_infos: Vec<FileInfo>,
-    state: Option<&State>,
-) -> (Vec<FileInfo>, Vec<(FileInfo, String)>) {
-    let mut new_files = Vec::new();
-    let mut cached_entries = Vec::new();
-
-    let is_empty = match state {
-        None => true,
-        Some(s) => s.is_empty().unwrap_or(false),
-    };
-    if is_empty {
-        return (file_infos, cached_entries);
-    }
-
-    let s = state.unwrap();
-
-    let keys: Vec<String> = file_infos
-        .iter()
-        .map(|file_info| {
-            let file = &file_info.path;
-            file.to_str().unwrap().to_string()
-        })
-        .collect();
-    let mut m = s.get_many(keys.iter(), None).unwrap();
-
-    for file_info in file_infos {
-        let file = &file_info.path;
-        let key = file.to_str().unwrap().to_string();
-        match m.remove(&key) {
-            Some(v) if v.checksum == file_info.checksum => {
-                let oid = v.hash_info.oid.clone();
-                let file_info = FileInfo::from_state(&file_info.path, v);
-                cached_entries.push((file_info, oid));
+fn collect_files(
+    root: &Utf8Path,
+    ignore: &Gitignore,
+    jobs: usize,
+) -> Result<Vec<FileInfo>, BuildError> {
+    WalkDir::new(root)
+        .follow_links(true)
+        .skip_hidden(false)
+        .parallelism(Parallelism::RayonNewPool(jobs))
+        .process_read_dir(|_, _, (), children| {
+            for dir_entry in children.iter_mut().flatten() {
+                if dir_entry.file_name() == ".dvc"
+                    || dir_entry.file_name() == ".git"
+                    || dir_entry.file_name() == ".hg"
+                {
+                    dir_entry.read_children_path = None;
+                }
             }
-            _ => new_files.push(file_info),
+        })
+        .into_iter()
+        .par_bridge()
+        .map(|dir_entry_res| {
+            let dentry = dir_entry_res?;
+            if !dentry.file_type().is_file() {
+                return Ok(None);
+            }
+            let path = &Utf8PathBuf::try_from(dentry.path())?;
+            if ignore.matched_path_or_any_parents(path, false).is_ignore() {
+                return Ok(None);
+            }
+            match dentry.metadata() {
+                Err(e) => Err(BuildError::WalkError(e)),
+                Ok(meta) => FileInfo::from_metadata(path, &meta)
+                    .map(Some)
+                    .map_err(BuildError::Io),
+            }
+        })
+        .filter_map(std::result::Result::transpose)
+        .collect()
+}
+
+#[derive(Default)]
+struct HashResults {
+    new: Vec<FileInfo>,
+    cached: Vec<(FileInfo, Oid)>,
+}
+
+fn get_hashes(file_infos: Vec<FileInfo>, state: Option<&State>) -> Result<HashResults, BuildError> {
+    let mut new = Vec::new();
+    let mut cached = Vec::new();
+    match state {
+        Some(s) if !s.is_empty()? => {
+            let keys: Vec<String> = file_infos
+                .iter()
+                .map(|file_info| file_info.path.as_str().to_string())
+                .collect();
+            let mut m = s.get_many(keys.iter(), None)?;
+
+            for (file_info, key) in file_infos.into_iter().zip(keys.into_iter()) {
+                match m.remove(&key) {
+                    Some(v) if v.checksum == file_info.checksum => {
+                        cached.push((file_info, v.hash_info.oid));
+                    }
+                    _ => new.push(file_info),
+                }
+            }
+            Ok(HashResults { new, cached })
         }
+        _ => Ok(HashResults {
+            new: file_infos,
+            cached,
+        }),
     }
-    (new_files, cached_entries)
 }
 
 fn set_hashes<'a>(
-    entries: impl Iterator<Item = &'a (&'a FileInfo, String)>,
+    entries: impl Iterator<Item = &'a (FileInfo, Oid)>,
     state: Option<&State>,
-) {
+) -> Result<(), StateError> {
     if let Some(s) = state {
         let state_hashes = entries.map(|(file_info, oid)| {
             let file = &file_info.path;
             let checksum = &file_info.checksum;
             (
-                file.to_str().unwrap().to_string(),
+                file.as_str().to_string(),
                 StateValue {
-                    checksum: checksum.to_string(),
-                    hash_info: StateHash {
-                        oid: oid.to_string(),
-                    },
+                    checksum: checksum.clone(),
+                    hash_info: StateHash { oid: oid.clone() },
                     size: file_info.size,
                 },
             )
         });
-        s.set_many(state_hashes).unwrap();
+        s.set_many(state_hashes)?;
+    }
+    Ok(())
+}
+
+fn hash_files(file_infos: Vec<FileInfo>) -> std::io::Result<Vec<(FileInfo, Oid)>> {
+    if file_infos.is_empty() {
+        Ok(Vec::new())
+    } else {
+        file_infos
+            .into_par_iter()
+            .map(|file_info| {
+                let oid = file_md5(&file_info.path)?;
+                Ok((file_info, oid))
+            })
+            .collect()
     }
 }
 
-fn build_file(root: &PathBuf, state: Option<&State>) -> (Object, u64) {
-    let file_info = FileInfo::from_metadata(root, &fs::metadata(root).unwrap());
+fn get_or_hash_files(
+    files: Vec<FileInfo>,
+    state: Option<&State>,
+) -> Result<Vec<(FileInfo, Oid)>, BuildError> {
+    let HashResults { new, mut cached } = log_durations("checking cache for hashed files", || {
+        get_hashes(files, state)
+    })?;
+    let new_entries = log_durations("hashing files", || hash_files(new))?;
+    log_durations("saving hashes", || set_hashes(new_entries.iter(), state))?;
+    cached.extend(new_entries);
+    Ok(cached)
+}
+
+fn build_file(root: &Utf8Path, state: Option<&State>) -> Result<(Object, u64), BuildError> {
+    let file_info = FileInfo::from_metadata(root, &fs::metadata(root)?)?;
+    let key = root.as_str();
     let state_value: Option<StateValue> = match state {
-        None => None,
-        Some(s) => {
-            let value = s.get((*root).to_str().unwrap()).unwrap();
-            match value {
-                None => None,
-                Some(st) => {
-                    if st.checksum == file_info.checksum {
-                        Some(st)
-                    } else {
-                        None
-                    }
-                }
-            }
-        }
+        Some(s) => s.get(key)?.filter(|st| st.checksum == file_info.checksum),
+        _ => None,
     };
-    let oid = match state_value {
-        None => {
-            let oid = file_md5(root);
+    let oid = if let Some(st) = state_value {
+        st.hash_info.oid
+    } else {
+        let oid = file_md5(&root)?;
+        if let Some(s) = state {
             let sv = StateValue {
-                checksum: file_info.checksum.to_string(),
-                hash_info: StateHash {
-                    oid: oid.to_string(),
-                },
+                checksum: file_info.checksum.clone(),
+                hash_info: StateHash { oid: oid.clone() },
                 size: file_info.size,
             };
-            if let Some(s) = state {
-                s.set(root.to_str().unwrap(), &sv).unwrap();
-            }
-            oid
+            s.set(key, &sv)?;
         }
-        Some(st) => st.hash_info.oid,
+        oid
     };
-    (Object::HashFile(oid), file_info.size)
+    Ok((Object::HashFile(oid), file_info.size))
+}
+
+fn build_tree_from_entries(
+    root: &Utf8Path,
+    file_infos_with_oids: impl Iterator<Item = (FileInfo, Oid)>,
+) -> Result<Tree, BuildError> {
+    let mut entries = file_infos_with_oids
+        .map(|(file_info, oid)| {
+            let relpath = file_info.path.strip_prefix(root)?.to_path_buf();
+            Ok(TreeEntry { relpath, oid })
+        })
+        .collect::<Result<Vec<_>, BuildError>>()?;
+    entries.par_sort_unstable(); // sort keys
+    Ok(Tree { entries })
+}
+
+fn build_tree(
+    root: &Utf8Path,
+    state: Option<&State>,
+    ignore: &Gitignore,
+    jobs: usize,
+) -> Result<(Object, u64), BuildError> {
+    let result = log_durations("collecting files", || collect_files(root, ignore, jobs));
+    match result {
+        Ok(files) => {
+            let size = files.iter().map(|fi| fi.size).sum();
+            let all_entries = get_or_hash_files(files, state)?;
+            let tree = log_durations("building tree", || {
+                build_tree_from_entries(root, all_entries.into_iter())
+            })?;
+            Ok((Object::Tree(tree), size))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 pub fn build(
     _odb: &Odb,
-    root: &Path,
+    root: &Utf8Path,
     state: Option<&State>,
     ignore: &Gitignore,
     jobs: usize,
-) -> (Object, u64) {
-    let root = fs::canonicalize(root).unwrap();
+) -> Result<(Object, u64), BuildError> {
+    let root = camino::absolute_utf8(root)?;
     assert!(
         !ignore
             .matched_path_or_any_parents(&root, root.is_dir())
             .is_ignore(),
-        "The path {} is dvcignored",
-        root.display(),
+        "The path {root} is dvcignored",
     );
 
     if root.is_file() {
-        return build_file(&root, state);
+        build_file(&root, state)
+    } else {
+        build_tree(&root, state, ignore, jobs)
     }
-
-    let walk_start = Instant::now();
-    let files: Vec<FileInfo> = WalkDir::new(&root)
-        .follow_links(true)
-        .parallelism(Parallelism::RayonNewPool(jobs))
-        .into_iter()
-        .par_bridge()
-        .filter_map(|dir_entry_res| {
-            let dentry = dir_entry_res.ok()?;
-            if !dentry.file_type().is_file() {
-                return None;
-            }
-            let path = &dentry.path();
-
-            if ignore.matched_path_or_any_parents(path, false).is_ignore() {
-                return None;
-            }
-            Some(FileInfo::from_metadata(path, &dentry.metadata().unwrap()))
-        })
-        .collect();
-
-    let size: u64 = files.par_iter().map(|fi| fi.size).sum();
-    debug!("time to walk {:?}", walk_start.elapsed());
-
-    let check_hashed_start = Instant::now();
-    let (new_files, cached_entries) = get_hashes(files, state);
-    debug!(
-        "time to check if files are already hashed {:?}",
-        check_hashed_start.elapsed()
-    );
-
-    let hash_start = Instant::now();
-    let new_entries: Vec<(&FileInfo, String)> = new_files
-        .par_iter()
-        .map(|file_info| (file_info, file_md5(&file_info.path)))
-        .collect();
-    debug!("time to hash {:?}", hash_start.elapsed());
-
-    let save_hashes_start = Instant::now();
-    set_hashes(new_entries.iter(), state);
-    debug!("time to save hashes {:?}", save_hashes_start.elapsed());
-
-    let build_tree_start = Instant::now();
-    let mut tree_entries: Vec<TreeEntry> =
-        Vec::with_capacity(cached_entries.len() + new_entries.len());
-    for (file_info, oid) in cached_entries {
-        let relpath = file_info.path.strip_prefix(&root).unwrap().to_path_buf();
-        tree_entries.push(TreeEntry {
-            relpath,
-            oid: oid.clone(),
-        });
-    }
-
-    for (file_info, oid) in new_entries {
-        let relpath = file_info.path.strip_prefix(&root).unwrap().to_path_buf();
-        tree_entries.push(TreeEntry {
-            relpath,
-            oid: oid.clone(),
-        });
-    }
-
-    tree_entries.par_sort_unstable(); // sort keys
-
-    debug!("time to build tree {:?}", build_tree_start.elapsed());
-    let tree = Object::Tree(Tree {
-        entries: tree_entries,
-    });
-    (tree, size)
 }

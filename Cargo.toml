@@ -15,37 +15,38 @@ eula = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reflink-copy = "0.1.26"
+reflink-copy = "0.1.28"
 hex = "0.4.3"
-console = "0.15.11"
-num_cpus = "1.16.0"
+console = "0.16.1"
+num_cpus = "1.17.0"
 md-5 = "0.10.6"
-rayon = "1.10.0"
+rayon = "1.11.0"
 jwalk = "0.8.1"
-base16ct = { version = "0.2.0", features = ["alloc"] }
-clap = { version = "4.5.36", features = ["derive"] }
-indicatif = { version = "0.17.11", features = ["rayon"] }
-rusqlite = { version = "0.34.0", features = ["bundled", "chrono"] }
+base16ct = { version = "0.3.0", features = ["alloc"] }
+clap = { version = "4.5.51", features = ["derive"] }
+indicatif = { version = "0.18.2", features = ["rayon"] }
+rusqlite = { version = "0.37.0", features = ["bundled", "chrono"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0.140", features = ["preserve_order"] }
+serde_json = { version = "1.0.145", features = ["preserve_order"] }
 serde_yaml = "0.9"
-ignore = "0.4.23"
+ignore = "0.4.25"
 itertools = "0.14.0"
 env_logger = "0.11.8"
-log = "0.4.27"
-config = "0.15.11"
-serde_derive = "1.0.219"
+log = "0.4.28"
+config = "0.15.18"
+serde_derive = "1.0.228"
 directories = "6.0.0"
-git2 = { version = "0.20.1", default-features = false }
-whoami = "1.6.0"
-serde_with = "3.12.0"
-thiserror = "2.0.12"
+git2 = { version = "0.20.2", default-features = false }
+whoami = "1.6.1"
+serde_with = "3.15.1"
+thiserror = "2.0.17"
+camino = { version = "1.2.1", features = ["serde1"] }
 
 [target.'cfg(windows)'.dependencies]
-file-id = "0.2.2"
+file-id = "0.2.3"
 
 [dev-dependencies]
-tempfile = "3.19.1"
+tempfile = "3.23.0"
 
 [lints.rust]
 unsafe_code = "forbid"

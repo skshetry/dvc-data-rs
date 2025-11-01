@@ -1,6 +1,11 @@
-use std::time::{SystemTime, SystemTimeError};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-pub fn unix_time(system_time: SystemTime) -> Result<f64, SystemTimeError> {
-    let duration = system_time.duration_since(SystemTime::UNIX_EPOCH)?;
-    Ok(duration.as_secs_f64())
+pub fn unix_time(time: SystemTime) -> f64 {
+    if time > UNIX_EPOCH {
+        let d = time.duration_since(UNIX_EPOCH).unwrap();
+        d.as_secs_f64()
+    } else {
+        let d = UNIX_EPOCH.duration_since(time).unwrap();
+        -d.as_secs_f64()
+    }
 }

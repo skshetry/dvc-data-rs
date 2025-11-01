@@ -1,18 +1,26 @@
 use crate::fsutils::transfer_file;
 use crate::models::{DvcFile, Output};
-use crate::objects::Tree;
+use crate::objects::{Tree, TreeError};
 use crate::odb::{Odb, oid_to_path};
+use camino::Utf8PathBuf;
 use indicatif::{ParallelProgressIterator, ProgressBar};
 use rayon::prelude::*;
 use std::fs;
 use std::io::Error as IOError;
-use std::path::PathBuf;
+use std::path::Path;
+use thiserror::Error as ThisError;
 
-fn checkout_file(
-    from: &PathBuf,
-    to: &PathBuf,
-    cache_types: Option<&Vec<String>>,
-) -> std::io::Result<()> {
+#[derive(Debug, ThisError)]
+pub enum CheckoutError {
+    #[error(transparent)]
+    TreeError(#[from] TreeError),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    SerdeYaml(#[from] serde_yaml::Error),
+}
+
+fn checkout_file(from: &Path, to: &Path, cache_types: Option<&Vec<String>>) -> std::io::Result<()> {
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
 
@@ -27,7 +35,7 @@ fn checkout_file(
     let link_types = if let Some(vec) = cache_types {
         vec
     } else {
-        &vec!["copy".to_string()]
+        &vec!["copy".to_owned()]
     };
 
     for link_type in link_types {
@@ -50,21 +58,18 @@ fn checkout_file(
             _ => panic!("Unknown cache type: {link_type:?}"),
         }
     }
-    Err(IOError::new(
-        std::io::ErrorKind::Other,
-        "No cache type worked",
-    ))
+    Err(IOError::other("No cache type worked"))
 }
 
 pub fn checkout_obj(
     odb: &Odb,
     oid: &str,
-    to: &PathBuf,
+    to: &Utf8PathBuf,
     cache_types: &Option<Vec<String>>,
-) -> std::io::Result<()> {
+) -> Result<(), CheckoutError> {
     let from = oid_to_path(&odb.path, oid);
     if oid.ends_with(".dir") {
-        let tree = Tree::load_from(&from).unwrap();
+        let tree = Tree::load_from(&from)?;
         let pb = ProgressBar::new(tree.entries.len() as u64);
 
         fs::create_dir_all(to)?;
@@ -74,21 +79,24 @@ pub fn checkout_obj(
             .try_for_each(|entry| {
                 let src = oid_to_path(&odb.path, &entry.oid);
                 let dst = to.join(&entry.relpath);
-                checkout_file(&src, &dst, cache_types.as_ref())?;
-                std::io::Result::Ok(())
+                checkout_file(&src, &dst.into_std_path_buf(), cache_types.as_ref())
             })?;
         return Ok(());
     }
-    checkout_file(&from, to, cache_types.as_ref())
+    Ok(checkout_file(
+        &from,
+        &to.clone().into_std_path_buf(),
+        cache_types.as_ref(),
+    )?)
 }
 
 pub fn checkout(
     odb: &Odb,
-    dvcfile_path: &PathBuf,
+    dvcfile_path: &Utf8PathBuf,
     cache_types: &Option<Vec<String>>,
-) -> std::io::Result<()> {
+) -> Result<(), CheckoutError> {
     let contents = &fs::read_to_string(dvcfile_path)?;
-    let dvcfile_obj: DvcFile = serde_yaml::from_str(contents).unwrap();
+    let dvcfile_obj: DvcFile = serde_yaml::from_str(contents)?;
     let Output { oid, path, .. } = dvcfile_obj.outs.0;
     checkout_obj(odb, &oid, &path, cache_types)
 }

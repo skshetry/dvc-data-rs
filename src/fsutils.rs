@@ -1,6 +1,6 @@
 use crate::hash::md5;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub fn compute_checksum(ut: f64, ino: u128, size: u64) -> String {
     let st = "([".to_owned()
@@ -28,7 +28,7 @@ pub fn size_from_meta(meta: &fs::Metadata) -> u64 {
     meta.file_size()
 }
 
-pub fn transfer_file(from: &PathBuf, to: &PathBuf) -> std::io::Result<()> {
+pub fn transfer_file(from: &Path, to: &Path) -> std::io::Result<()> {
     if let Some(parent) = to.parent() {
         fs::create_dir_all(parent)?;
     }

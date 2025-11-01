@@ -8,9 +8,21 @@ use crate::hash::md5;
 use crate::odb::Odb;
 use crate::state::State;
 use crate::timeutils::unix_time;
-use std::error::Error;
 use std::fs;
 use std::{env, io};
+use thiserror::Error as ThisError;
+
+#[derive(Debug, ThisError)]
+pub enum RepoError {
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    #[error(transparent)]
+    StateError(#[from] crate::state::StateError),
+    #[error(transparent)]
+    ConfigError(#[from] crate::config::ConfigError),
+    #[error("Repository not found")]
+    NotFound,
+}
 
 #[derive(Debug)]
 pub struct Repo {
@@ -32,7 +44,7 @@ fn btime(tmp_dir: &Path) -> Result<f64, io::Error> {
 
     match result {
         Ok(()) => match fs::metadata(btime) {
-            Ok(meta) => Ok(unix_time(meta.modified()?).unwrap()),
+            Ok(meta) => Ok(unix_time(meta.modified()?)),
             Err(e) => Err(e),
         },
         Err(e) => Err(e),
@@ -83,7 +95,7 @@ fn db_dirs() -> PathBuf {
 }
 
 impl Repo {
-    pub fn open(path: Option<PathBuf>) -> Result<Self, Box<dyn Error>> {
+    pub fn open(path: Option<PathBuf>) -> Result<Self, RepoError> {
         let root = path.unwrap_or(env::current_dir()?);
         let control_dir = root.join(".dvc");
 
@@ -113,7 +125,7 @@ impl Repo {
         Ok(repo)
     }
 
-    pub fn discover(path: Option<PathBuf>) -> Result<Self, Box<dyn Error>> {
+    pub fn discover(path: Option<PathBuf>) -> Result<Self, RepoError> {
         let path = path.unwrap_or(env::current_dir()?);
         let path = fs::canonicalize(path)?;
         for directory in path.ancestors() {
@@ -121,6 +133,6 @@ impl Repo {
                 return Self::open(Some(directory.to_path_buf()));
             }
         }
-        Err("No repository found".into())
+        Err(RepoError::NotFound)
     }
 }

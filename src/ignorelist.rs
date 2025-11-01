@@ -11,9 +11,9 @@ impl IgnoreList {
         self.ignore.join("\n") + "\n"
     }
 
-    fn as_string(&self, existing: impl BufRead) -> String {
-        let existing_items = existing.lines().collect::<Result<Vec<_>, _>>().unwrap();
-        let mut out = "\n".to_string();
+    fn as_string(&self, existing: impl BufRead) -> Result<String, std::io::Error> {
+        let existing_items = existing.lines().collect::<Result<Vec<_>, _>>()?;
+        let mut out = "\n".to_owned();
         for item in &self.ignore {
             if existing_items.contains(item) {
                 continue;
@@ -21,23 +21,20 @@ impl IgnoreList {
             out.push_str(item);
             out.push('\n');
         }
-        out.trim_end().to_string()
+        Ok(out.trim_end().to_string())
     }
 
-    pub fn write(&self, path: &Path) {
+    pub fn write(&self, path: &Path) -> Result<(), std::io::Error> {
         let contents = if path.exists() {
-            let file = File::open(path).unwrap();
+            let file = File::open(path)?;
             let reader = BufReader::new(file);
-            self.as_string(reader)
+            self.as_string(reader)?
         } else {
             self.as_new()
         };
 
-        let mut file = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(path)
-            .unwrap();
-        file.write_all(contents.as_bytes()).unwrap();
+        let mut file = OpenOptions::new().append(true).create(true).open(path)?;
+        file.write_all(contents.as_bytes())?;
+        Ok(())
     }
 }

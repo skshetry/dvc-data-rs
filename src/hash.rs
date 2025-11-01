@@ -1,5 +1,5 @@
 use md5::{Digest, Md5};
-use std::path::PathBuf;
+use std::path::Path;
 use std::{fs, io};
 
 pub fn md5<R>(reader: &mut R) -> String
@@ -12,7 +12,7 @@ where
     base16ct::lower::encode_string(&hash)
 }
 
-pub fn file_md5(path: &PathBuf) -> String {
-    let mut file = fs::File::open(path).unwrap();
-    md5(&mut file)
+pub fn file_md5<P: AsRef<Path>>(path: &P) -> io::Result<String> {
+    let mut file = fs::File::open(path)?;
+    Ok(md5(&mut file))
 }
